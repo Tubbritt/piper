@@ -11,135 +11,110 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
+      ORT_VERSION: 1.22.0
       ANDROID_ABI: arm64-v8a
-      ANDROID_PLATFORM: android-21
-      ORT_VERSION: 1.17.0     # ⇦ bump to any future ORT release here
+      ANDROID_PLATFORM: android-24  # ONNX Runtime 1.22 requires min API 24
 
     steps:
-    # ───────────────────────────────────────────────────────────────────
-    # Setup
-    # ───────────────────────────────────────────────────────────────────
-    - name: Checkout Piper repo
-      uses: actions/checkout@v4
+      - name: Checkout Piper
+        uses: actions/checkout@v4
 
-    - name: Install build dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          ninja-build autoconf automake libtool pkg-config cmake curl
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build autoconf automake libtool pkg-config cmake unzip curl
 
-    - name: Set up Android NDK
-      id: ndk
-      uses: nttld/setup-ndk@v1
-      with:
-        ndk-version: r26d
+      - name: Set up Android NDK
+        id: ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r26d
 
-    # ───────────────────────────────────────────────────────────────────
-    # eSpeak-NG
-    # ───────────────────────────────────────────────────────────────────
-    - name: Clone eSpeak-NG
-      run: git clone https://github.com/espeak-ng/espeak-ng.git
+      - name: Download ONNX Runtime for Android
+        run: |
+          mkdir -p third_party && cd third_party
+          curl -L --fail -o ort.aar \
+            "https://repo1.maven.org/maven2/com/microsoft/onnxruntime/onnxruntime-android/${ORT_VERSION}/onnxruntime-android-${ORT_VERSION}.aar"
+          unzip ort.aar -d onnxruntime-android
+          echo "ORT_ANDROID_DIR=$(pwd)/onnxruntime-android" >> "$GITHUB_ENV"
+          ls -R onnxruntime-android | head
 
-    - name: Build & install eSpeak-NG for Android
-      run: |
-        export ANDROID_NDK_HOME="${{ steps.ndk.outputs.ndk-path }}"
-        mkdir -p espeak-ng/build-android && cd espeak-ng/build-android
+      - name: Clone eSpeak-NG
+        run: |
+          git clone https://github.com/espeak-ng/espeak-ng.git
 
-        ESPEAK_INSTALL_PREFIX="$PWD/install-android"
+      - name: Build eSpeak-NG for Android
+        run: |
+          export ANDROID_NDK_HOME=${{ steps.ndk.outputs.ndk-path }}
+          cd espeak-ng
+          mkdir build-android && cd build-android
+          cmake .. \
+            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=${ANDROID_ABI} \
+            -DANDROID_PLATFORM=${ANDROID_PLATFORM} \
+            -DBUILD_SHARED_LIBS=ON \
+            -DCMAKE_BUILD_TYPE=Release \
+            -G Ninja
+          ninja
+          mkdir -p install/include install/lib
+          cp ../src/include/* install/include/
+          cp libespeak-ng.so install/lib/
+          echo "ESPEAK_INSTALL_PREFIX=$(pwd)/install" >> "$GITHUB_ENV"
+          ls -lh install/lib/libespeak-ng.so
 
-        cmake .. \
-          -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
-          -DANDROID_ABI="$ANDROID_ABI" \
-          -DANDROID_PLATFORM="$ANDROID_PLATFORM" \
-          -DBUILD_SHARED_LIBS=ON \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_INSTALL_PREFIX="$ESPEAK_INSTALL_PREFIX" \
-          -G Ninja
-        ninja
-        ninja install
+      - name: Clone piper-phonemize
+        run: |
+          git clone https://github.com/rhasspy/piper-phonemize.git
 
-        echo "ESPEAK_INSTALL_PREFIX=$ESPEAK_INSTALL_PREFIX" >> "$GITHUB_ENV"
-        ls -lh "$ESPEAK_INSTALL_PREFIX/lib/libespeak-ng.so"
+      - name: Build piper-phonemize for Android
+        run: |
+          export ANDROID_NDK_HOME=${{ steps.ndk.outputs.ndk-path }}
+          cd piper-phonemize
+          mkdir build-android && cd build-android
+          cmake .. \
+            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=${ANDROID_ABI} \
+            -DANDROID_PLATFORM=${ANDROID_PLATFORM} \
+            -DBUILD_SHARED_LIBS=ON \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DESPEAK_NG_INCLUDE_DIR=${{ env.ESPEAK_INSTALL_PREFIX }}/include \
+            -DESPEAK_NG_LIBRARY=${{ env.ESPEAK_INSTALL_PREFIX }}/lib/libespeak-ng.so \
+            -DONNXRUNTIME_INCLUDE_DIR=${{ env.ORT_ANDROID_DIR }}/headers \
+            -DONNXRUNTIME_LIB_DIR=${{ env.ORT_ANDROID_DIR }}/jni/${ANDROID_ABI} \
+            -G Ninja
+          ninja
+          ls -lh libpiper_phonemize.so
 
-    # ───────────────────────────────────────────────────────────────────
-    # ONNX Runtime (Android, AArch64)
-    # ───────────────────────────────────────────────────────────────────
-    - name: Download ONNX Runtime for Android (aarch64)
-      run: |
-        mkdir -p third_party && cd third_party
-        curl -L --fail -o ort.tgz \
-          "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-android-aarch64-${ORT_VERSION}.tgz"
-        tar -xzf ort.tgz
-        mv "onnxruntime-android-aarch64-${ORT_VERSION}" onnxruntime-android
-        echo "ORT_ANDROID_DIR=$(pwd)/onnxruntime-android" >> "$GITHUB_ENV"
-        ls -R onnxruntime-android | head
+      - name: Build Piper for Android
+        run: |
+          export ANDROID_NDK_HOME=${{ steps.ndk.outputs.ndk-path }}
+          mkdir -p build-android && cd build-android
+          cmake .. \
+            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=${ANDROID_ABI} \
+            -DANDROID_PLATFORM=${ANDROID_PLATFORM} \
+            -DBUILD_SHARED_LIBS=ON \
+            -DCMAKE_BUILD_TYPE=Release \
+            -Dphonemize_DIR=../piper-phonemize/build-android \
+            -DCMAKE_PREFIX_PATH=${{ env.ESPEAK_INSTALL_PREFIX }}/lib \
+            -G Ninja
+          ninja
+          ls -lh libpiper.so
 
-    # ───────────────────────────────────────────────────────────────────
-    # piper-phonemize
-    # ───────────────────────────────────────────────────────────────────
-    - name: Clone piper-phonemize
-      run: git clone https://github.com/rhasspy/piper-phonemize.git
+      - name: Upload Piper .so
+        uses: actions/upload-artifact@v4
+        with:
+          name: piper-android-so
+          path: build-android/libpiper.so
 
-    - name: Build piper-phonemize for Android
-      run: |
-        export ANDROID_NDK_HOME="${{ steps.ndk.outputs.ndk-path }}"
-        cd piper-phonemize
+      - name: Upload piper-phonemize .so
+        uses: actions/upload-artifact@v4
+        with:
+          name: piper-phonemize-android-so
+          path: piper-phonemize/build-android/libpiper_phonemize.so
 
-        # Replace bundled Linux ORT with Android build
-        rm -rf lib/onnxruntime-linux-aarch64-*
-        cp -r "$ORT_ANDROID_DIR" "lib/onnxruntime-linux-aarch64-${ORT_VERSION}"
-
-        mkdir -p build-android && cd build-android
-        cmake .. \
-          -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
-          -DANDROID_ABI="$ANDROID_ABI" \
-          -DANDROID_PLATFORM="$ANDROID_PLATFORM" \
-          -DBUILD_SHARED_LIBS=ON \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DBUILD_TESTS=OFF \
-          -DESPEAK_NG_LIBRARY="$ESPEAK_INSTALL_PREFIX/lib/libespeak-ng.so" \
-          -DESPEAK_NG_INCLUDE_DIR="$ESPEAK_INSTALL_PREFIX/include" \
-          -G Ninja
-        ninja
-        ls -lh libpiper_phonemize.so
-
-    # ───────────────────────────────────────────────────────────────────
-    # Piper core library
-    # ───────────────────────────────────────────────────────────────────
-    - name: Build Piper for Android
-      run: |
-        export ANDROID_NDK_HOME="${{ steps.ndk.outputs.ndk-path }}"
-
-        mkdir -p build-android && cd build-android
-        cmake .. \
-          -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
-          -DANDROID_ABI="$ANDROID_ABI" \
-          -DANDROID_PLATFORM="$ANDROID_PLATFORM" \
-          -DBUILD_SHARED_LIBS=ON \
-          -DCMAKE_BUILD_TYPE=Release \
-          -Dphonemize_DIR="../piper-phonemize/build-android" \
-          -DCMAKE_PREFIX_PATH="$ESPEAK_INSTALL_PREFIX" \
-          -G Ninja
-        ninja
-        ls -lh libpiper.so
-
-    # ───────────────────────────────────────────────────────────────────
-    # Artifacts
-    # ───────────────────────────────────────────────────────────────────
-    - name: Upload Piper .so
-      uses: actions/upload-artifact@v4
-      with:
-        name: piper-android-so
-        path: build-android/libpiper.so
-
-    - name: Upload piper-phonemize .so
-      uses: actions/upload-artifact@v4
-      with:
-        name: piper-phonemize-android-so
-        path: piper-phonemize/build-android/libpiper_phonemize.so
-
-    - name: Upload eSpeak-NG .so
-      uses: actions/upload-artifact@v4
-      with:
-        name: espeak-ng-android-so
-        path: ${{ env.ESPEAK_INSTALL_PREFIX }}/lib/libespeak-ng.so
+      - name: Upload espeak-ng .so
+        uses: actions/upload-artifact@v4
+        with:
+          name: espeak-ng-android-so
+          path: espeak-ng/build-android/install/lib/libespeak-ng.so
