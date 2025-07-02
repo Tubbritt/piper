@@ -17,9 +17,7 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            ninja-build autoconf automake libtool pkg-config \
-            cmake curl unzip
+          sudo apt-get install -y ninja-build autoconf automake libtool pkg-config cmake curl unzip
 
       - name: Set up Android NDK
         id: ndk
@@ -28,7 +26,8 @@ jobs:
           ndk-version: r26d
 
       - name: Clone eSpeak-NG
-        run: git clone https://github.com/espeak-ng/espeak-ng.git
+        run: |
+          git clone https://github.com/espeak-ng/espeak-ng.git
 
       - name: Build eSpeak-NG for Android (arm64)
         run: |
@@ -45,53 +44,53 @@ jobs:
             -DCMAKE_CXX_FLAGS_RELEASE="-s -fvisibility=hidden" \
             -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--no-undefined" \
             -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-            -DCMAKE_INSTALL_PREFIX=/usr/local \
             -G Ninja
           ninja
-          # install into a staging dir so we can point piper-phonemize at it
-          DESTDIR=$PWD/install-android ninja install
+          # Install into a staging area
+          DESTDIR=$(pwd)/install-android ninja install
+          # eSpeak-NG's CMake install sometimes omits subfolders—manually bring in the headers
+          mkdir -p install-android/usr/local/include
+          cp -r ../src/include/* install-android/usr/local/include/
+          ls -R install-android/usr/local | head -n20
 
-      - name: Download ONNX Runtime AArch64
+      - name: Download ONNX Runtime for Android (arm64)
         run: |
           ORT_VERSION=1.16.3
           mkdir -p third_party && cd third_party
 
-          echo "Fetching ONNX Runtime asset URL..."
-          ASSET_URL=$(
-            curl -s "https://api.github.com/repos/microsoft/onnxruntime/releases/tags/v${ORT_VERSION}" \
-            | grep browser_download_url \
-            | grep android-aarch64 \
-            | head -n1 \
-            | cut -d '"' -f4
+          # Try several possible asset names until one works
+          ASSETS=(
+            "onnxruntime-android-aarch64-${ORT_VERSION}.tgz"
+            "onnxruntime-android-aarch64-${ORT_VERSION}.zip"
+            "onnxruntime-android-arm64-v8a-${ORT_VERSION}.tgz"
+            "onnxruntime-android-arm64-v8a-${ORT_VERSION}.zip"
           )
-          echo "→ $ASSET_URL"
+          for asset in "${ASSETS[@]}"; do
+            URL="https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/${asset}"
+            echo "Trying $URL"
+            if curl -L --fail -o asset "$URL"; then
+              echo "Downloaded $asset"
+              if [[ "$asset" == *.tgz ]]; then tar -xzf asset
+              else unzip -q asset; fi
+              break
+            else
+              echo "Failed to download $asset"
+            fi
+          done
 
-          curl -L --fail -o asset "$ASSET_URL"
-          if [[ "$ASSET_URL" == *.tgz ]]; then
-            tar -xzf asset
-          elif [[ "$ASSET_URL" == *.zip ]]; then
-            unzip asset
-          else
-            echo "Unknown format: $ASSET_URL" >&2
-            exit 1
-          fi
-
-          # Rename extracted folder to a stable name
-          EXTR=$(find . -maxdepth 1 -type d -name "*android-aarch64*" | head -n1)
-          mv "$EXTR" onnxruntime-android
+          EXTRACTED=$(find . -maxdepth 1 -type d -name "onnxruntime-android*" | head -n1)
+          mv "$EXTRACTED" onnxruntime-android
 
           echo "ORT_ANDROID_DIR=$(pwd)/onnxruntime-android" >> "$GITHUB_ENV"
-          ls -R onnxruntime-android | head
+          ls -R onnxruntime-android | head -n20
 
       - name: Clone piper-phonemize
-        run: git clone https://github.com/rhasspy/piper-phonemize.git
+        run: |
+          git clone https://github.com/rhasspy/piper-phonemize.git
 
       - name: Build piper-phonemize for Android
         run: |
           export ANDROID_NDK_HOME=${{ steps.ndk.outputs.ndk-path }}
-          # absolute path to your eSpeak-NG install:
-          ESPEAK_INSTALL_PREFIX=$(pwd)/espeak-ng/build-android/install-android/usr/local
-
           cd piper-phonemize
           mkdir build-android && cd build-android
           cmake .. \
@@ -100,16 +99,18 @@ jobs:
             -DANDROID_PLATFORM=android-21 \
             -DBUILD_SHARED_LIBS=ON \
             -DCMAKE_BUILD_TYPE=Release \
-            -DESPEAK_NG_DIR=$ESPEAK_INSTALL_PREFIX \
-            -DONNXRUNTIME_DIR=$ORT_ANDROID_DIR \
+            -DESPEAK_NG_LIBRARY=${{ github.workspace }}/espeak-ng/build-android/install-android/usr/local/lib/libespeak-ng.so \
+            -DESPEAK_NG_INCLUDE_DIR=${{ github.workspace }}/espeak-ng/build-android/install-android/usr/local/include \
+            -Donnxruntime_DIR=$ORT_ANDROID_DIR \
             -DCMAKE_C_FLAGS_RELEASE="-s -fvisibility=hidden" \
             -DCMAKE_CXX_FLAGS_RELEASE="-s -fvisibility=hidden" \
             -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--no-undefined" \
             -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
             -G Ninja
           ninja
+          ls -lh libpiper_phonemize.so
 
-      - name: Build Piper Core for Android
+      - name: Build Piper for Android
         run: |
           export ANDROID_NDK_HOME=${{ steps.ndk.outputs.ndk-path }}
           mkdir build-android && cd build-android
@@ -119,14 +120,15 @@ jobs:
             -DANDROID_PLATFORM=android-21 \
             -DBUILD_SHARED_LIBS=ON \
             -DCMAKE_BUILD_TYPE=Release \
-            -Dphonemize_DIR=../piper-phonemize/build-android \
-            -DONNXRUNTIME_DIR=$ORT_ANDROID_DIR \
+            -Dphonemize_DIR=${{ github.workspace }}/piper-phonemize/build-android \
+            -Donnxruntime_DIR=$ORT_ANDROID_DIR \
             -DCMAKE_C_FLAGS_RELEASE="-s -fvisibility=hidden" \
             -DCMAKE_CXX_FLAGS_RELEASE="-s -fvisibility=hidden" \
             -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--no-undefined" \
             -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
             -G Ninja
           ninja
+          ls -lh libpiper.so
 
       - name: Upload Piper Android .so
         uses: actions/upload-artifact@v4
