@@ -40,13 +40,11 @@ jobs:
             -DANDROID_PLATFORM=android-21 \
             -DBUILD_SHARED_LIBS=ON \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_C_FLAGS_RELEASE="-s -fvisibility=hidden" \
-            -DCMAKE_CXX_FLAGS_RELEASE="-s -fvisibility=hidden" \
-            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--no-undefined" \
             -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-s,--no-undefined" \
             -G Ninja
           ninja
-          ninja install DESTDIR=install-android
+          cmake --install . --prefix install-android
 
       - name: Download ONNX Runtime for Android
         run: |
@@ -74,13 +72,11 @@ jobs:
             -DANDROID_PLATFORM=android-21 \
             -DBUILD_SHARED_LIBS=ON \
             -DCMAKE_BUILD_TYPE=Release \
-            -DESPEAK_NG_LIBRARY=../../espeak-ng/build-android/install-android/usr/local/lib/libespeak-ng.so \
-            -DESPEAK_NG_INCLUDE_DIR=../../espeak-ng/build-android/install-android/usr/local/include \
+            -DESPEAK_NG_LIBRARY=../../espeak-ng/build-android/install-android/lib/libespeak-ng.so \
+            -DESPEAK_NG_INCLUDE_DIR=../../espeak-ng/build-android/install-android/include \
             -Donnxruntime_DIR=$ORT_ANDROID_DIR \
-            -DCMAKE_C_FLAGS_RELEASE="-s -fvisibility=hidden" \
-            -DCMAKE_CXX_FLAGS_RELEASE="-s -fvisibility=hidden" \
-            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--no-undefined" \
             -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-s,--no-undefined" \
             -G Ninja
           ninja
 
@@ -96,10 +92,8 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -Dphonemize_DIR=../piper-phonemize/build-android \
             -Donnxruntime_DIR=$ORT_ANDROID_DIR \
-            -DCMAKE_C_FLAGS_RELEASE="-s -fvisibility=hidden" \
-            -DCMAKE_CXX_FLAGS_RELEASE="-s -fvisibility=hidden" \
-            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--no-undefined" \
             -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-s,--no-undefined" \
             -G Ninja
           ninja
 
@@ -119,4 +113,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: espeak-ng-android-so
-          path: espeak-ng/build-android/install-android/usr/local/lib/libespeak-ng.so
+          path: espeak-ng/build-android/install-android/lib/libespeak-ng.so
