@@ -17,7 +17,8 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build autoconf automake libtool pkg-config cmake curl unzip
+          sudo apt-get install -y ninja-build autoconf automake \
+            libtool pkg-config cmake curl unzip git
 
       - name: Set up Android NDK
         id: ndk
@@ -26,8 +27,7 @@ jobs:
           ndk-version: r26d
 
       - name: Clone espeak-ng
-        run: |
-          git clone https://github.com/espeak-ng/espeak-ng.git
+        run: git clone https://github.com/espeak-ng/espeak-ng.git
 
       - name: Build espeak-ng for Android (arm64)
         run: |
@@ -42,29 +42,46 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_C_FLAGS_RELEASE="-s -fvisibility=hidden" \
             -DCMAKE_CXX_FLAGS_RELEASE="-s -fvisibility=hidden" \
-            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--no-undefined -static-libstdc++ -static-libgcc" \
+            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--no-undefined" \
             -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-            -DCMAKE_INSTALL_PREFIX=$PWD/install-android \
+            -DCMAKE_INSTALL_PREFIX=${PWD}/install-android/usr/local \
             -G Ninja
           ninja
-          cmake --install . --prefix $PWD/install-android
+          ninja install
+          # just to verify
+          ls -lh install-android/usr/local/lib
+          ls -lh install-android/usr/local/include
 
-      - name: Download ONNX Runtime for Android (arm64-v8a static libs)
+      - name: Download ONNX Runtime for Android via AAR
         run: |
-          ORT_VERSION=1.17.1
-          mkdir -p third_party && cd third_party
-          ZIP_NAME="onnxruntime-android-arm64-v8a-static_lib-${ORT_VERSION}.zip"
-          URL="https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/${ZIP_NAME}"
-          echo "Downloading ONNX Runtime from ${URL}"
-          curl -L --fail -o ort.zip "$URL"
-          unzip ort.zip
-          mv "onnxruntime-android-arm64-v8a-static_lib-${ORT_VERSION}" onnxruntime-android
-          echo "ORT_ANDROID_DIR=$(pwd)/onnxruntime-android" >> $GITHUB_ENV
-          ls -R onnxruntime-android | head -n20
+          ORT_VERSION=1.17.0
+          mkdir -p third_party/onnxruntime-android
+          cd third_party/onnxruntime-android
+          AAR_URL="https://repo1.maven.org/maven2/com/microsoft/onnxruntime/onnxruntime-android/${ORT_VERSION}/onnxruntime-android-${ORT_VERSION}.aar"
+          echo "Downloading ONNX Runtime AAR from $AAR_URL"
+          curl -L --fail -o onnxruntime.aar "$AAR_URL"
+          unzip onnxruntime.aar
+
+          # libonnxruntime.so for arm64-v8a
+          mkdir -p lib
+          cp jni/arm64-v8a/libonnxruntime.so lib/
+
+          # headers: first see if AAR bundled any, else clone just to get them
+          if [ -d jni/include ]; then
+            mkdir -p include && cp -r jni/include/* include/
+          else
+            echo "No headers in AAR; pulling in ONNX Runtime headers from source..."
+            git clone --depth 1 --branch v${ORT_VERSION} https://github.com/microsoft/onnxruntime.git onnxrt_src
+            mkdir -p include && cp -r onnxrt_src/include/onnxruntime include/
+          fi
+
+          # export for subsequent steps
+          echo "ONNXRUNTIME_DIR=$(pwd)" >> $GITHUB_ENV
+          cd ../../
+          ls -R third_party/onnxruntime-android | head
 
       - name: Clone piper-phonemize
-        run: |
-          git clone https://github.com/rhasspy/piper-phonemize.git
+        run: git clone https://github.com/rhasspy/piper-phonemize.git
 
       - name: Build piper-phonemize for Android
         run: |
@@ -77,15 +94,16 @@ jobs:
             -DANDROID_PLATFORM=android-21 \
             -DBUILD_SHARED_LIBS=ON \
             -DCMAKE_BUILD_TYPE=Release \
-            -DESPEAK_NG_LIBRARY=../../espeak-ng/build-android/install-android/lib/libespeak-ng.so \
-            -DESPEAK_NG_INCLUDE_DIR=../../espeak-ng/build-android/install-android/include \
-            -Donnxruntime_DIR=$ORT_ANDROID_DIR \
+            -DESPEAK_NG_LIBRARY=../../espeak-ng/build-android/install-android/usr/local/lib/libespeak-ng.so \
+            -DESPEAK_NG_INCLUDE_DIR=../../espeak-ng/build-android/install-android/usr/local/include \
+            -DONNXRUNTIME_DIR=$ONNXRUNTIME_DIR \
             -DCMAKE_C_FLAGS_RELEASE="-s -fvisibility=hidden" \
             -DCMAKE_CXX_FLAGS_RELEASE="-s -fvisibility=hidden" \
-            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--no-undefined -static-libstdc++ -static-libgcc" \
+            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--no-undefined" \
             -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
             -G Ninja
           ninja
+          ls -lh libpiper_phonemize.so
 
       - name: Build Piper for Android
         run: |
@@ -98,13 +116,14 @@ jobs:
             -DBUILD_SHARED_LIBS=ON \
             -DCMAKE_BUILD_TYPE=Release \
             -Dphonemize_DIR=../piper-phonemize/build-android \
-            -Donnxruntime_DIR=$ORT_ANDROID_DIR \
+            -DONNXRUNTIME_DIR=$ONNXRUNTIME_DIR \
             -DCMAKE_C_FLAGS_RELEASE="-s -fvisibility=hidden" \
             -DCMAKE_CXX_FLAGS_RELEASE="-s -fvisibility=hidden" \
-            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--no-undefined -static-libstdc++ -static-libgcc" \
+            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--no-undefined" \
             -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
             -G Ninja
           ninja
+          ls -lh libpiper.so
 
       - name: Upload Piper Android .so
         uses: actions/upload-artifact@v4
@@ -122,4 +141,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: espeak-ng-android-so
-          path: espeak-ng/build-android/install-android/lib/libespeak-ng.so
+          path: espeak-ng/build-android/install-android/usr/local/lib/libespeak-ng.so
