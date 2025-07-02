@@ -9,6 +9,9 @@ on:
 jobs:
   build-android:
     runs-on: ubuntu-latest
+    env:
+      ANDROID_PLATFORM: android-21
+      ANDROID_ABI: arm64-v8a
 
     steps:
       - name: Checkout Piper
@@ -17,7 +20,7 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build autoconf automake libtool pkg-config cmake curl
+          sudo apt-get install -y ninja-build autoconf automake libtool pkg-config cmake curl unzip
 
       - name: Set up Android NDK
         id: ndk
@@ -25,41 +28,54 @@ jobs:
         with:
           ndk-version: r26d
 
-      - name: Clone espeak-ng
-        run: |
-          git clone https://github.com/espeak-ng/espeak-ng.git
+      - name: Clone eSpeak-NG
+        run: git clone https://github.com/espeak-ng/espeak-ng.git
 
-      - name: Build espeak-ng for Android (arm64)
+      - name: Build eSpeak-NG for Android (arm64)
         run: |
           export ANDROID_NDK_HOME=${{ steps.ndk.outputs.ndk-path }}
           cd espeak-ng
           mkdir build-android && cd build-android
           cmake .. \
             -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
-            -DANDROID_ABI=arm64-v8a \
-            -DANDROID_PLATFORM=android-21 \
+            -DANDROID_ABI=$ANDROID_ABI \
+            -DANDROID_PLATFORM=$ANDROID_PLATFORM \
             -DBUILD_SHARED_LIBS=ON \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-s,--no-undefined" \
+            -DCMAKE_C_FLAGS_RELEASE="-s -fvisibility=hidden" \
+            -DCMAKE_CXX_FLAGS_RELEASE="-s -fvisibility=hidden" \
+            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-rpath,\$ORIGIN -Wl,--no-undefined" \
             -G Ninja
           ninja
-          cmake --install . --prefix install-android
+          # install into a local directory
+          DESTDIR=$(pwd)/install-android ninja install
 
-      - name: Download ONNX Runtime for Android
+      - name: Download ONNX Runtime for Android (arm64, with fallback)
         run: |
           ORT_VERSION=1.16.3
           mkdir -p third_party && cd third_party
-          curl -L --fail -o ort.tgz \
-            "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-android-aarch64-${ORT_VERSION}.tgz"
-          tar -xzf ort.tgz
-          mv "onnxruntime-android-aarch64-${ORT_VERSION}" onnxruntime-android
+          TGZ_URL="https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-android-aarch64-${ORT_VERSION}.tgz"
+          ZIP_URL="https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-android-aarch64-${ORT_VERSION}.zip"
+
+          echo "Trying TGZ asset..."
+          if curl -L --fail -o ort.tgz "$TGZ_URL"; then
+            tar xf ort.tgz
+          else
+            echo "TGZ not found, falling back to ZIP..."
+            curl -L --fail -o ort.zip "$ZIP_URL"
+            unzip ort.zip
+          fi
+
+          # Move whatever directory was extracted into a consistent name:
+          EXTRACTED_DIR=$(find . -maxdepth 1 -type d -name "onnxruntime-android-aarch64*" | head -n1)
+          mv "$EXTRACTED_DIR" onnxruntime-android
+
           echo "ORT_ANDROID_DIR=$(pwd)/onnxruntime-android" >> "$GITHUB_ENV"
           ls -R onnxruntime-android | head
 
       - name: Clone piper-phonemize
-        run: |
-          git clone https://github.com/rhasspy/piper-phonemize.git
+        run: git clone https://github.com/rhasspy/piper-phonemize.git
 
       - name: Build piper-phonemize for Android
         run: |
@@ -68,15 +84,17 @@ jobs:
           mkdir build-android && cd build-android
           cmake .. \
             -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
-            -DANDROID_ABI=arm64-v8a \
-            -DANDROID_PLATFORM=android-21 \
+            -DANDROID_ABI=$ANDROID_ABI \
+            -DANDROID_PLATFORM=$ANDROID_PLATFORM \
             -DBUILD_SHARED_LIBS=ON \
             -DCMAKE_BUILD_TYPE=Release \
-            -DESPEAK_NG_LIBRARY=../../espeak-ng/build-android/install-android/lib/libespeak-ng.so \
-            -DESPEAK_NG_INCLUDE_DIR=../../espeak-ng/build-android/install-android/include \
-            -Donnxruntime_DIR=$ORT_ANDROID_DIR \
             -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-s,--no-undefined" \
+            -DCMAKE_C_FLAGS_RELEASE="-s -fvisibility=hidden" \
+            -DCMAKE_CXX_FLAGS_RELEASE="-s -fvisibility=hidden" \
+            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-rpath,\$ORIGIN -Wl,--no-undefined" \
+            -DESPEAK_NG_LIBRARY=../../espeak-ng/build-android/install-android/usr/local/lib/libespeak-ng.so \
+            -DESPEAK_NG_INCLUDE_DIR=../../espeak-ng/build-android/install-android/usr/local/include \
+            -Donnxruntime_DIR=$ORT_ANDROID_DIR \
             -G Ninja
           ninja
 
@@ -86,14 +104,16 @@ jobs:
           mkdir build-android && cd build-android
           cmake .. \
             -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
-            -DANDROID_ABI=arm64-v8a \
-            -DANDROID_PLATFORM=android-21 \
+            -DANDROID_ABI=$ANDROID_ABI \
+            -DANDROID_PLATFORM=$ANDROID_PLATFORM \
             -DBUILD_SHARED_LIBS=ON \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            -DCMAKE_C_FLAGS_RELEASE="-s -fvisibility=hidden" \
+            -DCMAKE_CXX_FLAGS_RELEASE="-s -fvisibility=hidden" \
+            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-rpath,\$ORIGIN -Wl,--no-undefined" \
             -Dphonemize_DIR=../piper-phonemize/build-android \
             -Donnxruntime_DIR=$ORT_ANDROID_DIR \
-            -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-s,--no-undefined" \
             -G Ninja
           ninja
 
@@ -109,8 +129,8 @@ jobs:
           name: piper-phonemize-android-so
           path: piper-phonemize/build-android/libpiper_phonemize.so
 
-      - name: Upload espeak-ng Android .so
+      - name: Upload eSpeak-NG Android .so
         uses: actions/upload-artifact@v4
         with:
           name: espeak-ng-android-so
-          path: espeak-ng/build-android/install-android/lib/libespeak-ng.so
+          path: espeak-ng/build-android/install-android/usr/local/lib/libespeak-ng.so
