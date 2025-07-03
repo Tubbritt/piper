@@ -166,14 +166,24 @@ jobs:
         echo "PIPER_PHONEMIZE_ANDROID=$PWD/install-android" >> $GITHUB_ENV
 
     # ------------------------------------------------------------------ #
-    # 10 · Strip newline in VERSION                                      #
+    # 10 · Copy eSpeak-NG data (needed for Piper install)                #
+    # ------------------------------------------------------------------ #
+    - name: Copy eSpeak-NG data
+      run: |
+        if [ -d "$ESPEAK_NG_ANDROID/share/espeak-ng-data" ]; then
+          mkdir -p "$PIPER_PHONEMIZE_ANDROID/share"
+          cp -r "$ESPEAK_NG_ANDROID/share/espeak-ng-data" "$PIPER_PHONEMIZE_ANDROID/share/"
+        fi
+
+    # ------------------------------------------------------------------ #
+    # 11 · Strip newline in VERSION                                      #
     # ------------------------------------------------------------------ #
     - name: Fix VERSION file
       run: |
         tr -d '\n' < VERSION > VERSION.tmp && mv VERSION.tmp VERSION
 
     # ------------------------------------------------------------------ #
-    # 11 · Piper core (shared)                                           #
+    # 12 · Piper core (shared)                                           #
     # ------------------------------------------------------------------ #
     - name: Build Piper
       run: |
@@ -198,7 +208,7 @@ jobs:
         cmake --install .
 
     # ------------------------------------------------------------------ #
-    # 12 · Upload Unity-ready .so files                                  #
+    # 13 · Upload Unity-ready .so files                                  #
     # ------------------------------------------------------------------ #
     - name: Upload Android libraries
       uses: actions/upload-artifact@v4
@@ -208,3 +218,4 @@ jobs:
           build-android/install-android/lib/libpiper.so
           piper-phonemize/build-android/install-android/lib/libpiper_phonemize.so
           espeak-ng/build-android/install-android/lib/libespeak-ng.so
+          build-android/install-android/share/espeak-ng-data/**
