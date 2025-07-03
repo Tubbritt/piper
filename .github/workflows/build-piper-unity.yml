@@ -10,7 +10,6 @@ jobs:
   build-android:
     runs-on: ubuntu-latest
 
-    # ---------- Shared environment ---------- #
     env:
       ANDROID_ABI: arm64-v8a
       ANDROID_PLATFORM: android-21
@@ -52,11 +51,9 @@ jobs:
     # ------------------------------------------------------------------ #
     - name: Patch CMakeLists for Android threading
       run: |
-        # Insert find_package(Threads REQUIRED) once, right after the first project() line
         if ! grep -q "find_package(Threads" CMakeLists.txt; then
           sed -i '/^[[:space:]]*project(/a find_package(Threads REQUIRED)' CMakeLists.txt
         fi
-        # Replace any bare “pthread” linkage tokens with portable Threads::Threads
         sed -i -E 's/([[:space:][:punct:]]|^)pthread([[:space:][:punct:]]|$)/ Threads::Threads /g' CMakeLists.txt || true
 
     # ------------------------------------------------------------------ #
@@ -121,7 +118,7 @@ jobs:
         echo "FMT_ANDROID=$PWD/install-android" >> $GITHUB_ENV
 
     # ------------------------------------------------------------------ #
-    # 8 · spdlog (static, bundled fmt)                                   #
+    # 8 · spdlog (static)                                                #
     # ------------------------------------------------------------------ #
     - name: Clone spdlog
       run: git clone --depth 1 --branch v1.13.0 https://github.com/gabime/spdlog.git
@@ -166,7 +163,6 @@ jobs:
           -G Ninja
         ninja
         cmake --install .
-
         echo "PIPER_PHONEMIZE_ANDROID=$PWD/install-android" >> $GITHUB_ENV
 
     # ------------------------------------------------------------------ #
@@ -194,7 +190,6 @@ jobs:
           -DSPDLOG_DIR=$SPDLOG_ANDROID \
           -DPIPER_PHONEMIZE_DIR=$PIPER_PHONEMIZE_ANDROID \
           -DCMAKE_PREFIX_PATH="$FMT_ANDROID;$SPDLOG_ANDROID;$PIPER_PHONEMIZE_ANDROID;$ESPEAK_NG_ANDROID;$ORT_ANDROID_DIR" \
-          # install inside repo, not /usr/local
           -DCMAKE_INSTALL_PREFIX=$INSTALL_DIR \
           -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
           -DBUILD_TESTING=OFF \
