@@ -145,22 +145,24 @@ jobs:
           cmake --install .
           echo "PIPER_PHONEMIZE_ANDROID=${{ github.workspace }}/piper-phonemize/build-android/install-android" >> $GITHUB_ENV
 
-      # 9 · Patch Piper CMake (simple echo approach)
+      # 9 · Patch Piper CMake (folded block + loop avoids YAML pitfalls)
       - name: Patch Piper CMake
-        run: |
+        run: >
           sed -i '/^[[:space:]]*project(/a \
-find_package(Threads REQUIRED)\nfind_package(fmt REQUIRED)\nfind_package(spdlog REQUIRED)' CMakeLists.txt
-          sed -i -E 's/([[:space:][:punct:]]|^)pthread([[:space:][:punct:]]|$)/ Threads::Threads /g' CMakeLists.txt || true
-          echo 'add_library(onnxruntime SHARED IMPORTED)' >> CMakeLists.txt
-          echo 'set_target_properties(onnxruntime PROPERTIES IMPORTED_LOCATION "${ORT_ANDROID_DIR}/lib/libonnxruntime.so")' >> CMakeLists.txt
-          echo 'target_include_directories(onnxruntime INTERFACE "${ORT_ANDROID_DIR}/include")' >> CMakeLists.txt
-          echo '' >> CMakeLists.txt
-          echo 'add_library(piperlib SHARED src/cpp/piper.cpp)' >> CMakeLists.txt
-          echo 'set_target_properties(piperlib PROPERTIES POSITION_INDEPENDENT_CODE ON)' >> CMakeLists.txt
-          echo 'target_include_directories(piperlib PRIVATE ${ESPEAK_NG_ANDROID}/include)' >> CMakeLists.txt
-          echo 'target_link_directories(piperlib PRIVATE ${ESPEAK_NG_ANDROID}/lib)' >> CMakeLists.txt
-          echo 'target_link_libraries(piperlib PRIVATE espeak-ng piper_phonemize onnxruntime fmt::fmt spdlog::spdlog Threads::Threads)' >> CMakeLists.txt
-          echo 'install(TARGETS piperlib LIBRARY DESTINATION lib)' >> CMakeLists.txt
+          find_package(Threads REQUIRED)\nfind_package(fmt REQUIRED)\nfind_package(spdlog REQUIRED)' CMakeLists.txt &&
+          sed -i -E 's/([[:space:][:punct:]]|^)pthread([[:space:][:punct:]]|$)/ Threads::Threads /g' CMakeLists.txt || true &&
+          for line in \
+"add_library(onnxruntime SHARED IMPORTED)" \
+"set_target_properties(onnxruntime PROPERTIES IMPORTED_LOCATION \"\${ORT_ANDROID_DIR}/lib/libonnxruntime.so\")" \
+"target_include_directories(onnxruntime INTERFACE \"\${ORT_ANDROID_DIR}/include\")" \
+"add_library(piperlib SHARED src/cpp/piper.cpp)" \
+"set_target_properties(piperlib PROPERTIES POSITION_INDEPENDENT_CODE ON)" \
+"target_include_directories(piperlib PRIVATE \${ESPEAK_NG_ANDROID}/include)" \
+"target_link_directories(piperlib PRIVATE \${ESPEAK_NG_ANDROID}/lib)" \
+"target_link_libraries(piperlib PRIVATE espeak-ng piper_phonemize onnxruntime fmt::fmt spdlog::spdlog Threads::Threads)" \
+"install(TARGETS piperlib LIBRARY DESTINATION lib)"; do
+            echo "$line" >> CMakeLists.txt;
+          done
 
       # 10 · Strip newline in VERSION
       - name: Fix VERSION file
