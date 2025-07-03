@@ -80,7 +80,7 @@ jobs:
         echo "ESPEAK_NG_ANDROID=${{ github.workspace }}/espeak-ng/build-android/install-android" >> $GITHUB_ENV
 
     # ------------------------------------------------------------------ #
-    # 6 · ONNX Runtime (Manual include/lib from AAR) - CORRECTED         #
+    # 6 · ONNX Runtime (Reverted to original, correct logic)             #
     # ------------------------------------------------------------------ #
     - name: Download and prepare ONNX Runtime
       run: |
@@ -94,8 +94,8 @@ jobs:
         echo "---------------------------------------------"
 
         mkdir -p onnxruntime-android/include onnxruntime-android/lib
-        # This is the corrected path for headers in recent AAR versions
-        cp -r ort/prefab/modules/onnxruntime/include/* onnxruntime-android/include/
+        # This is the original, correct logic. The AAR has a top-level 'headers' dir.
+        cp -r ort/headers/* onnxruntime-android/include/
         cp    ort/jni/${ANDROID_ABI}/libonnxruntime.so onnxruntime-android/lib/
         echo "ORT_ANDROID_DIR=${{ github.workspace }}/third_party/onnxruntime-android" >> $GITHUB_ENV
 
