@@ -116,7 +116,8 @@ jobs:
           -DANDROID_ABI=$ANDROID_ABI \
           -DANDROID_PLATFORM=$ANDROID_PLATFORM \
           -DSPDLOG_FMT_EXTERNAL=ON \
-          -DFMT_DIR=$FMT_ANDROID            \
+          -DCMAKE_PREFIX_PATH=$FMT_ANDROID \
+	  -Dfmt_DIR=$FMT_ANDROID/lib/cmake/fmt \           \
           -DBUILD_SHARED_LIBS=OFF           \
           -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
           -DCMAKE_BUILD_TYPE=Release \
