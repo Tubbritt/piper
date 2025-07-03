@@ -181,32 +181,31 @@ jobs:
         fi
 
     # ------------------------------------------------------------------ #
-    # 11 · Patch Piper to build libpiperlib.so                           #
+    # 11 · Patch Piper CMake to build libpiperlib.so                     #
     # ------------------------------------------------------------------ #
     - name: Patch Piper CMake to build shared library
       run: |
         if ! grep -q "add_library(piperlib" CMakeLists.txt; then
           cat <<'EOF' >> CMakeLists.txt
-
-# ----------------------------------------------------------------------
-# Added by GitHub workflow: build shared Piper library for Unity
-add_library(piperlib SHARED
-    src/cpp/piper.cpp
-)
-set_target_properties(piperlib PROPERTIES
-    POSITION_INDEPENDENT_CODE ON
-)
-target_link_libraries(piperlib
-    PRIVATE
-        piper_phonemize
-        espeak-ng
-        fmt::fmt
-        spdlog::spdlog
-)
-install(TARGETS piperlib
-        LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
-# ----------------------------------------------------------------------
-EOF
+        # ----------------------------------------------------------------------
+        # Added by GitHub workflow: build shared Piper library for Unity
+        add_library(piperlib SHARED
+            src/cpp/piper.cpp
+        )
+        set_target_properties(piperlib PROPERTIES
+            POSITION_INDEPENDENT_CODE ON
+        )
+        target_link_libraries(piperlib
+            PRIVATE
+                piper_phonemize
+                espeak-ng
+                fmt::fmt
+                spdlog::spdlog
+        )
+        install(TARGETS piperlib
+                LIBRARY DESTINATION \${CMAKE_INSTALL_PREFIX}/lib)
+        # ----------------------------------------------------------------------
+        EOF
         fi
 
     # ------------------------------------------------------------------ #
