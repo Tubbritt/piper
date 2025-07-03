@@ -165,7 +165,8 @@ jobs:
           -DCMAKE_INSTALL_PREFIX=install-android \
           -G Ninja
         ninja
-        cmake --install . --prefix install-android
+        cmake --install .
+
         echo "PIPER_PHONEMIZE_ANDROID=$PWD/install-android" >> $GITHUB_ENV
 
     # ------------------------------------------------------------------ #
@@ -181,6 +182,7 @@ jobs:
     - name: Build Piper
       run: |
         mkdir build-android && cd build-android
+        INSTALL_DIR=$PWD/install-android          # <— easier to reuse
         cmake .. \
           -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
           -DANDROID_ABI=$ANDROID_ABI \
@@ -192,11 +194,12 @@ jobs:
           -DSPDLOG_DIR=$SPDLOG_ANDROID \
           -DPIPER_PHONEMIZE_DIR=$PIPER_PHONEMIZE_ANDROID \
           -DCMAKE_PREFIX_PATH="$FMT_ANDROID;$SPDLOG_ANDROID;$PIPER_PHONEMIZE_ANDROID;$ESPEAK_NG_ANDROID;$ORT_ANDROID_DIR" \
+          -DCMAKE_INSTALL_PREFIX=$INSTALL_DIR   # <— FIXED: avoid /usr/local
           -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
           -DBUILD_TESTING=OFF \
           -G Ninja
         ninja
-        cmake --install . --prefix install-android
+        cmake --install .
 
     # ------------------------------------------------------------------ #
     # 12 · Upload Unity-ready .so files                                  #
