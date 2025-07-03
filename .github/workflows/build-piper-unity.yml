@@ -34,7 +34,6 @@ jobs:
       with:
         ndk-version: r26d
 
-    # convenience variables reused below
     - name: Export common env
       run: |
         echo "ANDROID_NDK_HOME=${{ steps.ndk.outputs.ndk-path }}" >> $GITHUB_ENV
@@ -102,7 +101,7 @@ jobs:
         echo "FMT_ANDROID=$PWD/install-android" >> $GITHUB_ENV
 
     # ------------------------------------------------------------------ #
-    # 7 · spdlog (static, uses external fmt)                             #
+    # 7 · spdlog (static, uses bundled fmt)                              #
     # ------------------------------------------------------------------ #
     - name: Clone spdlog
       run: git clone --depth 1 --branch v1.13.0 https://github.com/gabime/spdlog.git
@@ -115,9 +114,6 @@ jobs:
           -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
           -DANDROID_ABI=$ANDROID_ABI \
           -DANDROID_PLATFORM=$ANDROID_PLATFORM \
-          -DSPDLOG_FMT_EXTERNAL=ON \
-          -DCMAKE_PREFIX_PATH=$FMT_ANDROID \
-          -Dfmt_DIR=$FMT_ANDROID/lib/cmake/fmt \
           -DBUILD_SHARED_LIBS=OFF \
           -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
           -DCMAKE_BUILD_TYPE=Release \
@@ -152,9 +148,9 @@ jobs:
         echo "PIPER_PHONEMIZE_ANDROID=$PWD/install-android" >> $GITHUB_ENV
 
     # ------------------------------------------------------------------ #
-    # 9 · Trim VERSION (newline → nothing)                               #
+    # 9 · Trim VERSION newline                                            #
     # ------------------------------------------------------------------ #
-    - name: Fix VERSION newline
+    - name: Strip newline from VERSION
       run: |
         tr -d '\n' < VERSION > VERSION.tmp && mv VERSION.tmp VERSION
 
