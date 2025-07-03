@@ -161,17 +161,11 @@ jobs:
     # ------------------------------------------------------------------ #
     - name: Patch Piper CMake
       run: |
-        # Inject find_package calls right after the project() line.
-        # This makes our pre-built dependencies visible to the script.
         sed -i '/^[[:space:]]*project(/a \
         find_package(Threads REQUIRED)\
         find_package(fmt REQUIRED)\
         find_package(spdlog REQUIRED)' CMakeLists.txt
-        
-        # Replace explicit -lpthread with the modern CMake target
         sed -i -E 's/([[:space:][:punct:]]|^)pthread([[:space:][:punct:]]|$)/ Threads::Threads /g' CMakeLists.txt || true
-
-        # Append our custom shared library target at the end of the file
         cat <<'EOF' >> CMakeLists.txt
         
         # ----------------------------------------------------------------------
@@ -220,7 +214,9 @@ jobs:
           -DCMAKE_INSTALL_PREFIX=$INSTALL_DIR \
           -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
           -DBUILD_TESTING=OFF \
-          -DCMAKE_PREFIX_PATH="$FMT_ANDROID;$SPDLOG_ANDROID;$PIPER_PHONEMIZE_ANDROID;$ESPEAK_NG_ANDROID;$ORT_ANDROID_DIR" \
+          -Dfmt_DIR=${FMT_ANDROID}/lib/cmake/fmt \
+          -Dspdlog_DIR=${SPDLOG_ANDROID}/lib/cmake/spdlog \
+          -DCMAKE_PREFIX_PATH="$PIPER_PHONEMIZE_ANDROID;$ESPEAK_NG_ANDROID;$ORT_ANDROID_DIR" \
           -G Ninja
         ninja
         cmake --install .
