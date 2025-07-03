@@ -17,13 +17,28 @@ elseif(NOT APPLE)
   string(APPEND CMAKE_C_FLAGS " -Wall -Wextra")
 endif()
 
-add_executable(piper src/cpp/main.cpp src/cpp/piper.cpp)
+# ---- BUILD AS SHARED LIBRARY + EXECUTABLE ----
+
+# 1) Core library
+add_library(piper SHARED
+  src/cpp/piper.cpp
+)
+# expose the header if you like (optional)
+set_target_properties(piper PROPERTIES PUBLIC_HEADER src/cpp/piper.hpp)
+
+# 2) CLI executable
+add_executable(piper_exec
+  src/cpp/main.cpp
+)
+# link the executable to the shared library
+target_link_libraries(piper_exec PRIVATE piper)
+
 add_executable(test_piper src/cpp/test.cpp src/cpp/piper.cpp)
 
 # NOTE: external project prefix are shortened because of path length restrictions on Windows
 # NOTE: onnxruntime is pulled from piper-phonemize
 
-# ---- fmt ---
+# ---- fmt ----
 
 if(NOT DEFINED FMT_DIR)
   set(FMT_VERSION "10.0.0")
@@ -39,9 +54,10 @@ if(NOT DEFINED FMT_DIR)
   )
   add_dependencies(piper fmt_external)
   add_dependencies(test_piper fmt_external)
+  add_dependencies(piper_exec fmt_external)
 endif()
 
-# ---- spdlog ---
+# ---- spdlog ----
 
 if(NOT DEFINED SPDLOG_DIR)
   set(SPDLOG_DIR "${CMAKE_CURRENT_BINARY_DIR}/si")
@@ -54,9 +70,10 @@ if(NOT DEFINED SPDLOG_DIR)
   )
   add_dependencies(piper spdlog_external)
   add_dependencies(test_piper spdlog_external)
+  add_dependencies(piper_exec spdlog_external)
 endif()
 
-# ---- piper-phonemize ---
+# ---- piper-phonemize ----
 
 if(NOT DEFINED PIPER_PHONEMIZE_DIR)
   set(PIPER_PHONEMIZE_DIR "${CMAKE_CURRENT_BINARY_DIR}/pi")
@@ -68,9 +85,10 @@ if(NOT DEFINED PIPER_PHONEMIZE_DIR)
   )
   add_dependencies(piper piper_phonemize_external)
   add_dependencies(test_piper piper_phonemize_external)
+  add_dependencies(piper_exec piper_phonemize_external)
 endif()
 
-# ---- Declare executable ----
+# ---- Link flags for non-Windows/Apple ----
 
 if((NOT MSVC) AND (NOT APPLE))
   # Linux flags
@@ -80,6 +98,8 @@ if((NOT MSVC) AND (NOT APPLE))
 
   set(PIPER_EXTRA_LIBRARIES "pthread")
 endif()
+
+# ---- Link all deps into the library ----
 
 target_link_libraries(piper
   fmt
@@ -105,6 +125,7 @@ target_include_directories(piper PUBLIC
 target_compile_definitions(piper PUBLIC _PIPER_VERSION=${piper_version})
 
 # ---- Declare test ----
+
 include(CTest)
 enable_testing()
 add_test(
@@ -140,12 +161,18 @@ target_link_libraries(test_piper PUBLIC
 
 install(
   TARGETS piper
-  DESTINATION ${CMAKE_INSTALL_PREFIX})
+  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+)
+
+install(
+  TARGETS piper_exec
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
 
 # Dependencies
 install(
   DIRECTORY ${PIPER_PHONEMIZE_DIR}/bin/
-  DESTINATION ${CMAKE_INSTALL_PREFIX}
+  DESTINATION ${CMAKE_INSTALL_BINDIR}
   USE_SOURCE_PERMISSIONS  # keep +x
   FILES_MATCHING
   PATTERN "piper_phonemize"
@@ -155,7 +182,7 @@ install(
 
 install(
   DIRECTORY ${PIPER_PHONEMIZE_DIR}/lib/
-  DESTINATION ${CMAKE_INSTALL_PREFIX}
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}
   FILES_MATCHING
   PATTERN "*.dll"
   PATTERN "*.so*"
