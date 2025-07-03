@@ -170,9 +170,18 @@ jobs:
     # ------------------------------------------------------------------ #
     - name: Copy eSpeak-NG data
       run: |
+        # Where Piper expects it:
+        DEST_DIR="$PIPER_PHONEMIZE_ANDROID/share"
+        mkdir -p "$DEST_DIR"
+
+        # Prefer the data from an installed prefix (if it exists) …
         if [ -d "$ESPEAK_NG_ANDROID/share/espeak-ng-data" ]; then
-          mkdir -p "$PIPER_PHONEMIZE_ANDROID/share"
-          cp -r "$ESPEAK_NG_ANDROID/share/espeak-ng-data" "$PIPER_PHONEMIZE_ANDROID/share/"
+          echo "Using installed espeak-ng-data"
+          cp -r "$ESPEAK_NG_ANDROID/share/espeak-ng-data" "$DEST_DIR/"
+        # … otherwise fall back to the raw source tree data.
+        else
+          echo "Using source-tree espeak-ng-data (cross-compile case)"
+          cp -r espeak-ng/espeak-ng-data "$DEST_DIR/"
         fi
 
     # ------------------------------------------------------------------ #
@@ -208,7 +217,7 @@ jobs:
         cmake --install .
 
     # ------------------------------------------------------------------ #
-    # 13 · Upload Unity-ready .so files                                  #
+    # 13 · Upload Unity-ready outputs                                    #
     # ------------------------------------------------------------------ #
     - name: Upload Android libraries
       uses: actions/upload-artifact@v4
