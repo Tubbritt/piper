@@ -170,29 +170,54 @@ jobs:
     # ------------------------------------------------------------------ #
     - name: Copy eSpeak-NG data
       run: |
-        # Where Piper expects it:
         DEST_DIR="$PIPER_PHONEMIZE_ANDROID/share"
         mkdir -p "$DEST_DIR"
-
-        # Prefer the data from an installed prefix (if it exists) …
         if [ -d "$ESPEAK_NG_ANDROID/share/espeak-ng-data" ]; then
           echo "Using installed espeak-ng-data"
           cp -r "$ESPEAK_NG_ANDROID/share/espeak-ng-data" "$DEST_DIR/"
-        # … otherwise fall back to the raw source tree data.
         else
           echo "Using source-tree espeak-ng-data (cross-compile case)"
           cp -r espeak-ng/espeak-ng-data "$DEST_DIR/"
         fi
 
     # ------------------------------------------------------------------ #
-    # 11 · Strip newline in VERSION                                      #
+    # 11 · Patch Piper to build libpiperlib.so                           #
+    # ------------------------------------------------------------------ #
+    - name: Patch Piper CMake to build shared library
+      run: |
+        if ! grep -q "add_library(piperlib" CMakeLists.txt; then
+          cat <<'EOF' >> CMakeLists.txt
+
+# ----------------------------------------------------------------------
+# Added by GitHub workflow: build shared Piper library for Unity
+add_library(piperlib SHARED
+    src/cpp/piper.cpp
+)
+set_target_properties(piperlib PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+)
+target_link_libraries(piperlib
+    PRIVATE
+        piper_phonemize
+        espeak-ng
+        fmt::fmt
+        spdlog::spdlog
+)
+install(TARGETS piperlib
+        LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
+# ----------------------------------------------------------------------
+EOF
+        fi
+
+    # ------------------------------------------------------------------ #
+    # 12 · Strip newline in VERSION                                      #
     # ------------------------------------------------------------------ #
     - name: Fix VERSION file
       run: |
         tr -d '\n' < VERSION > VERSION.tmp && mv VERSION.tmp VERSION
 
     # ------------------------------------------------------------------ #
-    # 12 · Piper core (shared)                                           #
+    # 13 · Piper core (exec + shared)                                    #
     # ------------------------------------------------------------------ #
     - name: Build Piper
       run: |
@@ -217,14 +242,14 @@ jobs:
         cmake --install .
 
     # ------------------------------------------------------------------ #
-    # 13 · Upload Unity-ready outputs                                    #
+    # 14 · Upload Unity-ready outputs                                    #
     # ------------------------------------------------------------------ #
     - name: Upload Android libraries
       uses: actions/upload-artifact@v4
       with:
         name: piper-android-libs
         path: |
-          build-android/install-android/lib/libpiper.so
+          build-android/install-android/lib/libpiperlib.so
           piper-phonemize/build-android/install-android/lib/libpiper_phonemize.so
           espeak-ng/build-android/install-android/lib/libespeak-ng.so
           build-android/install-android/share/espeak-ng-data/**
