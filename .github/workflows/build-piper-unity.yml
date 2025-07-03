@@ -80,20 +80,24 @@ jobs:
         echo "ESPEAK_NG_ANDROID=${{ github.workspace }}/espeak-ng/build-android/install-android" >> $GITHUB_ENV
 
     # ------------------------------------------------------------------ #
-    # 6 · ONNX Runtime (Manual include/lib layout from AAR)              #
+    # 6 · ONNX Runtime (Manual include/lib from AAR) - CORRECTED         #
     # ------------------------------------------------------------------ #
     - name: Download and prepare ONNX Runtime
       run: |
-        mkdir -p third_party/onnxruntime
-        cd third_party/onnxruntime
+        mkdir -p third_party && cd third_party
         curl -L -o ort.aar \
           "https://repo1.maven.org/maven2/com/microsoft/onnxruntime/onnxruntime-android/${ORT_VERSION}/onnxruntime-android-${ORT_VERSION}.aar"
-        unzip -q ort.aar -d unzipped_aar
-        # Create the include/lib structure the build system expects
-        mkdir -p include lib
-        cp -r unzipped_aar/prefab/modules/onnxruntime/include/onnxruntime include/
-        cp unzipped_aar/jni/${ANDROID_ABI}/libonnxruntime.so lib/
-        echo "ORT_ANDROID_DIR=${{ github.workspace }}/third_party/onnxruntime" >> $GITHUB_ENV
+        unzip -q ort.aar -d ort
+        
+        echo "--- Listing contents of unzipped ONNX AAR ---"
+        ls -R ort
+        echo "---------------------------------------------"
+
+        mkdir -p onnxruntime-android/include onnxruntime-android/lib
+        # This is the corrected path for headers in recent AAR versions
+        cp -r ort/prefab/modules/onnxruntime/include/* onnxruntime-android/include/
+        cp    ort/jni/${ANDROID_ABI}/libonnxruntime.so onnxruntime-android/lib/
+        echo "ORT_ANDROID_DIR=${{ github.workspace }}/third_party/onnxruntime-android" >> $GITHUB_ENV
 
     # ------------------------------------------------------------------ #
     # 7 · fmt (static)                                                   #
@@ -173,8 +177,6 @@ jobs:
     # ------------------------------------------------------------------ #
     - name: Patch Piper CMake to build shared library
       run: |
-        # Use a here-document to append the library definition.
-        # This is more robust than multiple sed commands.
         cat <<'EOF' >> CMakeLists.txt
         # ----------------------------------------------------------------------
         # Added by GitHub workflow: build shared Piper library for Unity
@@ -185,7 +187,6 @@ jobs:
         set_target_properties(piperlib PROPERTIES
             POSITION_INDEPENDENT_CODE ON
         )
-        # Link all necessary dependencies, including onnxruntime and Threads
         target_link_libraries(piperlib PRIVATE
             piper_phonemize
             onnxruntime
@@ -194,7 +195,6 @@ jobs:
             spdlog::spdlog
             Threads::Threads
         )
-        # Install the final library to lib/ inside the install prefix
         install(TARGETS piperlib
             LIBRARY DESTINATION lib
         )
@@ -250,5 +250,5 @@ jobs:
           build-android/install-android/lib/libpiperlib.so
           piper-phonemize/build-android/install-android/lib/libpiper_phonemize.so
           espeak-ng/build-android/install-android/lib/libespeak-ng.so
-          third_party/onnxruntime/lib/libonnxruntime.so
+          third_party/onnxruntime-android/lib/libonnxruntime.so
           build-android/install-android/share/espeak-ng-data/
