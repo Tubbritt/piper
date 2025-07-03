@@ -57,6 +57,23 @@ jobs:
         sed -i -E 's/([[:space:][:punct:]]|^)pthread([[:space:][:punct:]]|$)/ Threads::Threads /g' CMakeLists.txt || true
 
     # ------------------------------------------------------------------ #
+    # 4.1 · PATCH: build Piper as a shared library                       #
+    # ------------------------------------------------------------------ #
+    - name: Patch Piper to produce libpiper.so
+      run: |
+        # In top-level CMakeLists.txt:
+        # 1) Change add_executable → add_library
+        # 2) Install the new library target
+        sed -i 's|add_executable(piper src/cpp/main.cpp src/cpp/piper.cpp)|add_library(piper SHARED src/cpp/piper.cpp)\nadd_executable(piper_exec src/cpp/main.cpp)|' CMakeLists.txt
+
+        # Link the executable against the new shared lib
+        sed -i '/add_executable(piper_exec src\/cpp\/main.cpp)/a target_link_libraries(piper_exec PRIVATE piper)' CMakeLists.txt
+
+        # Adjust install rules: install libpiper.so into lib, piper_exec into bin
+        sed -i '/install( TARGETS piper DESTINATION /c\install(TARGETS piper DESTINATION ${CMAKE_INSTALL_LIBDIR})' CMakeLists.txt
+        sed -i '/install( TARGETS piper_exec DESTINATION /c\install(TARGETS piper_exec DESTINATION ${CMAKE_INSTALL_BINDIR})' CMakeLists.txt
+
+    # ------------------------------------------------------------------ #
     # 5 · eSpeak-NG (shared)                                             #
     # ------------------------------------------------------------------ #
     - name: Clone eSpeak-NG
@@ -199,13 +216,14 @@ jobs:
           -DANDROID_PLATFORM=$ANDROID_PLATFORM \
           -DANDROID_STL=$ANDROID_STL \
           -DBUILD_SHARED_LIBS=ON \
+          -DCMAKE_INSTALL_LIBDIR=lib \
+          -DCMAKE_INSTALL_BINDIR=bin \
           -DCMAKE_BUILD_TYPE=Release \
           -DFMT_DIR=$FMT_ANDROID \
           -DSPDLOG_DIR=$SPDLOG_ANDROID \
           -DPIPER_PHONEMIZE_DIR=$PIPER_PHONEMIZE_ANDROID \
           -DCMAKE_PREFIX_PATH="$FMT_ANDROID;$SPDLOG_ANDROID;$PIPER_PHONEMIZE_ANDROID;$ESPEAK_NG_ANDROID;$ORT_ANDROID_DIR" \
           -DCMAKE_INSTALL_PREFIX=$INSTALL_DIR \
-          -DCMAKE_INSTALL_LIBDIR=lib \
           -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
           -DBUILD_TESTING=OFF \
           -DPIPER_BUILD_EXE=OFF \
@@ -214,15 +232,15 @@ jobs:
         cmake --install .
 
     # ------------------------------------------------------------------ #
-    # 13 · (optional) Debug install tree                                 #
+    # 13 · List installed files (debug)                                  #
     # ------------------------------------------------------------------ #
     - name: List installed files
       run: |
-        echo "== Piper core install prefix =="
+        echo "=== Piper core install ==="
         find build-android/install-android -type f
-        echo "== Piper-phonemize install prefix =="
+        echo "=== Piper-phonemize install ==="
         find piper-phonemize/build-android/install-android -type f
-        echo "== eSpeak-NG install prefix =="
+        echo "=== eSpeak-NG install ==="
         find espeak-ng/build-android/install-android -type f
 
     # ------------------------------------------------------------------ #
@@ -236,4 +254,5 @@ jobs:
           build-android/install-android/lib/libpiper.so
           piper-phonemize/build-android/install-android/lib/libpiper_phonemize.so
           espeak-ng/build-android/install-android/lib/libespeak-ng.so
+          third_party/onnxruntime-android/lib/libonnxruntime.so
           build-android/install-android/share/espeak-ng-data/**
