@@ -39,6 +39,7 @@ jobs:
         echo "ANDROID_NDK_HOME=${{ steps.ndk.outputs.ndk-path }}" >> $GITHUB_ENV
         echo "ANDROID_ABI=arm64-v8a"                             >> $GITHUB_ENV
         echo "ANDROID_PLATFORM=android-21"                      >> $GITHUB_ENV
+        echo "ANDROID_STL=c++_shared"                           >> $GITHUB_ENV   # ✨ NEW
 
     # ------------------------------------------------------------------ #
     # 4 · eSpeak-NG (shared)                                             #
@@ -54,6 +55,7 @@ jobs:
           -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
           -DANDROID_ABI=$ANDROID_ABI \
           -DANDROID_PLATFORM=$ANDROID_PLATFORM \
+          -DANDROID_STL=$ANDROID_STL \             # ✨
           -DBUILD_SHARED_LIBS=ON \
           -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
           -DCMAKE_BUILD_TYPE=Release \
@@ -91,6 +93,7 @@ jobs:
           -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
           -DANDROID_ABI=$ANDROID_ABI \
           -DANDROID_PLATFORM=$ANDROID_PLATFORM \
+          -DANDROID_STL=$ANDROID_STL \             # ✨
           -DBUILD_SHARED_LIBS=OFF \
           -DFMT_TEST=OFF \
           -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
@@ -101,7 +104,7 @@ jobs:
         echo "FMT_ANDROID=$PWD/install-android" >> $GITHUB_ENV
 
     # ------------------------------------------------------------------ #
-    # 7 · spdlog (static, uses bundled fmt)                              #
+    # 7 · spdlog (static, bundled fmt)                                   #
     # ------------------------------------------------------------------ #
     - name: Clone spdlog
       run: git clone --depth 1 --branch v1.13.0 https://github.com/gabime/spdlog.git
@@ -114,6 +117,7 @@ jobs:
           -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
           -DANDROID_ABI=$ANDROID_ABI \
           -DANDROID_PLATFORM=$ANDROID_PLATFORM \
+          -DANDROID_STL=$ANDROID_STL \             # ✨
           -DBUILD_SHARED_LIBS=OFF \
           -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
           -DCMAKE_BUILD_TYPE=Release \
@@ -136,10 +140,10 @@ jobs:
           -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
           -DANDROID_ABI=$ANDROID_ABI \
           -DANDROID_PLATFORM=$ANDROID_PLATFORM \
+          -DANDROID_STL=$ANDROID_STL \             # ✨
           -DBUILD_SHARED_LIBS=ON \
           -DESPEAK_NG_DIR=$ESPEAK_NG_ANDROID \
           -DONNXRUNTIME_DIR=$ORT_ANDROID_DIR \
-          -DTHREADS_PREFER_PTHREAD_FLAG=ON \
           -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
           -DCMAKE_INSTALL_PREFIX=install-android \
           -G Ninja
@@ -148,9 +152,9 @@ jobs:
         echo "PIPER_PHONEMIZE_ANDROID=$PWD/install-android" >> $GITHUB_ENV
 
     # ------------------------------------------------------------------ #
-    # 9 · Trim VERSION newline                                            #
+    # 9 · Strip newline in VERSION                                       #
     # ------------------------------------------------------------------ #
-    - name: Strip newline from VERSION
+    - name: Fix VERSION
       run: |
         tr -d '\n' < VERSION > VERSION.tmp && mv VERSION.tmp VERSION
 
@@ -164,14 +168,12 @@ jobs:
           -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
           -DANDROID_ABI=$ANDROID_ABI \
           -DANDROID_PLATFORM=$ANDROID_PLATFORM \
+          -DANDROID_STL=$ANDROID_STL \             # ✨
           -DBUILD_SHARED_LIBS=ON \
           -DCMAKE_BUILD_TYPE=Release \
-          -DTHREADS_PREFER_PTHREAD_FLAG=ON \
           -DFMT_DIR=$FMT_ANDROID \
           -DSPDLOG_DIR=$SPDLOG_ANDROID \
           -DPIPER_PHONEMIZE_DIR=$PIPER_PHONEMIZE_ANDROID \
-          -DESPEAK_NG_DIR=$ESPEAK_NG_ANDROID \
-          -DONNXRUNTIME_DIR=$ORT_ANDROID_DIR \
           -DCMAKE_PREFIX_PATH="$FMT_ANDROID;$SPDLOG_ANDROID;$PIPER_PHONEMIZE_ANDROID;$ESPEAK_NG_ANDROID;$ORT_ANDROID_DIR" \
           -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
           -DBUILD_TESTING=OFF \
@@ -180,7 +182,7 @@ jobs:
         cmake --install . --prefix install-android
 
     # ------------------------------------------------------------------ #
-    # 11 · Upload Unity-ready .so files                                  #
+    # 11 · Upload Unity-ready .so files                                   #
     # ------------------------------------------------------------------ #
     - name: Upload Android libraries
       uses: actions/upload-artifact@v4
