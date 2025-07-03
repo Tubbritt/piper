@@ -18,24 +18,18 @@ jobs:
       ORT_VERSION: 1.17.0
 
     steps:
-      # ------------------------------------------------------------------ #
-      # 1 · Checkout                                                       #
-      # ------------------------------------------------------------------ #
+      # 1 · Checkout
       - name: Checkout source
         uses: actions/checkout@v4
 
-      # ------------------------------------------------------------------ #
-      # 2 · Host-side build tools                                          #
-      # ------------------------------------------------------------------ #
+      # 2 · Host-side build tools
       - name: Install prerequisites
         run: |
           sudo apt-get update
           sudo apt-get install -y ninja-build autoconf automake libtool \
             pkg-config cmake curl unzip
 
-      # ------------------------------------------------------------------ #
-      # 3 · Android NDK r26d                                               #
-      # ------------------------------------------------------------------ #
+      # 3 · Android NDK r26d
       - name: Set up Android NDK
         id: ndk
         uses: nttld/setup-ndk@v1
@@ -47,9 +41,7 @@ jobs:
           echo "ANDROID_NDK_HOME=${{ steps.ndk.outputs.ndk-path }}" >> $GITHUB_ENV
           echo "PATH=${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH" >> $GITHUB_ENV
 
-      # ------------------------------------------------------------------ #
-      # 4 · eSpeak-NG (shared)                                             #
-      # ------------------------------------------------------------------ #
+      # 4 · eSpeak-NG (shared)
       - name: Clone eSpeak-NG
         run: |
           git clone --depth 1 https://github.com/espeak-ng/espeak-ng.git
@@ -71,9 +63,7 @@ jobs:
           cmake --install . --prefix install-android
           echo "ESPEAK_NG_ANDROID=${{ github.workspace }}/espeak-ng/build-android/install-android" >> $GITHUB_ENV
 
-      # ------------------------------------------------------------------ #
-      # 5 · ONNX Runtime                                                   #
-      # ------------------------------------------------------------------ #
+      # 5 · ONNX Runtime
       - name: Download and prepare ONNX Runtime
         run: |
           mkdir -p third_party && cd third_party
@@ -85,9 +75,7 @@ jobs:
           cp ort/jni/${ANDROID_ABI}/libonnxruntime.so onnxruntime-android/lib/
           echo "ORT_ANDROID_DIR=${{ github.workspace }}/third_party/onnxruntime-android" >> $GITHUB_ENV
 
-      # ------------------------------------------------------------------ #
-      # 6 · fmt (static)                                                   #
-      # ------------------------------------------------------------------ #
+      # 6 · fmt (static)
       - name: Clone fmt
         run: |
           git clone --depth 1 --branch 10.2.1 https://github.com/fmtlib/fmt.git
@@ -110,9 +98,7 @@ jobs:
           cmake --install . --prefix install-android
           echo "FMT_ANDROID=${{ github.workspace }}/fmt/build-android/install-android" >> $GITHUB_ENV
 
-      # ------------------------------------------------------------------ #
-      # 7 · spdlog (static)                                                #
-      # ------------------------------------------------------------------ #
+      # 7 · spdlog (static)
       - name: Clone spdlog
         run: |
           git clone --depth 1 --branch v1.13.0 https://github.com/gabime/spdlog.git
@@ -134,9 +120,7 @@ jobs:
           cmake --install . --prefix install-android
           echo "SPDLOG_ANDROID=${{ github.workspace }}/spdlog/build-android/install-android" >> $GITHUB_ENV
 
-      # ------------------------------------------------------------------ #
-      # 8 · piper-phonemize (shared)                                       #
-      # ------------------------------------------------------------------ #
+      # 8 · piper-phonemize (shared)
       - name: Clone piper-phonemize
         run: |
           git clone --depth 1 https://github.com/rhasspy/piper-phonemize.git
@@ -161,62 +145,30 @@ jobs:
           cmake --install .
           echo "PIPER_PHONEMIZE_ANDROID=${{ github.workspace }}/piper-phonemize/build-android/install-android" >> $GITHUB_ENV
 
-      # ------------------------------------------------------------------ #
-      # 9 · Patch Piper CMake for extra deps (& ONNX Runtime import)       #
-      # ------------------------------------------------------------------ #
+      # 9 · Patch Piper CMake (simple echo approach)
       - name: Patch Piper CMake
         run: |
           sed -i '/^[[:space:]]*project(/a \
-          find_package(Threads REQUIRED)\nfind_package(fmt REQUIRED)\nfind_package(spdlog REQUIRED)' CMakeLists.txt
+find_package(Threads REQUIRED)\nfind_package(fmt REQUIRED)\nfind_package(spdlog REQUIRED)' CMakeLists.txt
           sed -i -E 's/([[:space:][:punct:]]|^)pthread([[:space:][:punct:]]|$)/ Threads::Threads /g' CMakeLists.txt || true
+          echo 'add_library(onnxruntime SHARED IMPORTED)' >> CMakeLists.txt
+          echo 'set_target_properties(onnxruntime PROPERTIES IMPORTED_LOCATION "${ORT_ANDROID_DIR}/lib/libonnxruntime.so")' >> CMakeLists.txt
+          echo 'target_include_directories(onnxruntime INTERFACE "${ORT_ANDROID_DIR}/include")' >> CMakeLists.txt
+          echo '' >> CMakeLists.txt
+          echo 'add_library(piperlib SHARED src/cpp/piper.cpp)' >> CMakeLists.txt
+          echo 'set_target_properties(piperlib PROPERTIES POSITION_INDEPENDENT_CODE ON)' >> CMakeLists.txt
+          echo 'target_include_directories(piperlib PRIVATE ${ESPEAK_NG_ANDROID}/include)' >> CMakeLists.txt
+          echo 'target_link_directories(piperlib PRIVATE ${ESPEAK_NG_ANDROID}/lib)' >> CMakeLists.txt
+          echo 'target_link_libraries(piperlib PRIVATE espeak-ng piper_phonemize onnxruntime fmt::fmt spdlog::spdlog Threads::Threads)' >> CMakeLists.txt
+          echo 'install(TARGETS piperlib LIBRARY DESTINATION lib)' >> CMakeLists.txt
 
-          cat >> CMakeLists.txt <<'CMAKETAIL'
-
-# ----------------------------------------------------------------------
-# Added by GitHub workflow: ONNX Runtime import
-# ----------------------------------------------------------------------
-add_library(onnxruntime SHARED IMPORTED)
-set_target_properties(onnxruntime PROPERTIES
-    IMPORTED_LOCATION "${ENV{ORT_ANDROID_DIR}}/lib/libonnxruntime.so"
-)
-target_include_directories(onnxruntime INTERFACE "${ENV{ORT_ANDROID_DIR}}/include")
-
-# ----------------------------------------------------------------------
-# Added by GitHub workflow: shared Piper library for Unity
-# ----------------------------------------------------------------------
-add_library(piperlib SHARED
-    src/cpp/piper.cpp
-)
-set_target_properties(piperlib PROPERTIES POSITION_INDEPENDENT_CODE ON)
-
-# --- eSpeak-NG include & link paths -----------------------------------
-set(ESPEAK_NG_ANDROID_DIR $ENV{ESPEAK_NG_ANDROID})
-target_include_directories(piperlib PRIVATE \${ESPEAK_NG_ANDROID_DIR}/include)
-target_link_directories  (piperlib PRIVATE \${ESPEAK_NG_ANDROID_DIR}/lib)
-target_link_libraries    (piperlib PRIVATE espeak-ng)
-
-# --- other deps --------------------------------------------------------
-target_link_libraries(piperlib PRIVATE
-    piper_phonemize
-    onnxruntime
-    fmt::fmt
-    spdlog::spdlog
-    Threads::Threads
-)
-install(TARGETS piperlib LIBRARY DESTINATION lib)
-CMAKETAIL
-
-      # ------------------------------------------------------------------ #
-      # 10 · Strip newline in VERSION                                      #
-      # ------------------------------------------------------------------ #
+      # 10 · Strip newline in VERSION
       - name: Fix VERSION file
         run: |
           tr -d '\n' < VERSION > VERSION.tmp
           mv VERSION.tmp VERSION
 
-      # ------------------------------------------------------------------ #
-      # 11 · Piper core (exec + shared)                                    #
-      # ------------------------------------------------------------------ #
+      # 11 · Piper core (exec + shared)
       - name: Build Piper
         run: |
           mkdir -p build-android && cd build-android
@@ -241,18 +193,14 @@ CMAKETAIL
           ninja
           cmake --install .
 
-      # ------------------------------------------------------------------ #
-      # 12 · Copy eSpeak-NG data                                           #
-      # ------------------------------------------------------------------ #
+      # 12 · Copy eSpeak-NG data
       - name: Copy eSpeak-NG data
         run: |
           FINAL_INSTALL_DIR="${{ github.workspace }}/build-android/install-android"
           mkdir -p "${FINAL_INSTALL_DIR}/share"
           cp -r "${{ github.workspace }}/espeak-ng/espeak-ng-data" "${FINAL_INSTALL_DIR}/share/"
 
-      # ------------------------------------------------------------------ #
-      # 13 · Upload Unity-ready outputs                                    #
-      # ------------------------------------------------------------------ #
+      # 13 · Upload Unity-ready outputs
       - name: Upload Android libraries and data
         uses: actions/upload-artifact@v4
         with:
