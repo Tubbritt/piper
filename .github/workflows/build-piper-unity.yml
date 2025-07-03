@@ -45,16 +45,18 @@ jobs:
     - name: Export Android env vars
       run: |
         echo "ANDROID_NDK_HOME=${{ steps.ndk.outputs.ndk-path }}" >> $GITHUB_ENV
-        # Add the tool-chain binaries to PATH (handy for any scripts)
         echo "PATH=${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH" >> $GITHUB_ENV
 
     # ------------------------------------------------------------------ #
-    # 4 · PATCH: drop explicit -lpthread on Android                      #
+    # 4 · PATCH: add find_package(Threads) & drop explicit -lpthread     #
     # ------------------------------------------------------------------ #
-    - name: Patch CMakeLists (replace explicit pthread linkage)
+    - name: Patch CMakeLists for Android threading
       run: |
-        # Replace any bare “pthread” linkage with portable Threads::Threads
-        # The ‘|| true’ keeps the build going if the search finds nothing.
+        # Insert find_package(Threads REQUIRED) once, right after the first project() line
+        if ! grep -q "find_package(Threads" CMakeLists.txt; then
+          sed -i '/^[[:space:]]*project(/a find_package(Threads REQUIRED)' CMakeLists.txt
+        fi
+        # Replace any bare “pthread” linkage tokens with portable Threads::Threads
         sed -i -E 's/([[:space:][:punct:]]|^)pthread([[:space:][:punct:]]|$)/ Threads::Threads /g' CMakeLists.txt || true
 
     # ------------------------------------------------------------------ #
@@ -190,9 +192,6 @@ jobs:
           -DSPDLOG_DIR=$SPDLOG_ANDROID \
           -DPIPER_PHONEMIZE_DIR=$PIPER_PHONEMIZE_ANDROID \
           -DCMAKE_PREFIX_PATH="$FMT_ANDROID;$SPDLOG_ANDROID;$PIPER_PHONEMIZE_ANDROID;$ESPEAK_NG_ANDROID;$ORT_ANDROID_DIR" \
-          -DTHREADS_PREFER_PTHREAD_FLAG=ON \
-          -DCMAKE_THREAD_LIBS_INIT="" \
-          -DCMAKE_HAVE_THREADS_LIBRARY=TRUE \
           -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
           -DBUILD_TESTING=OFF \
           -G Ninja
@@ -200,7 +199,7 @@ jobs:
         cmake --install . --prefix install-android
 
     # ------------------------------------------------------------------ #
-    # 12 · Upload Unity-ready .so files                                   #
+    # 12 · Upload Unity-ready .so files                                  #
     # ------------------------------------------------------------------ #
     - name: Upload Android libraries
       uses: actions/upload-artifact@v4
