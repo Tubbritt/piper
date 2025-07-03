@@ -157,7 +157,7 @@ jobs:
         echo "PIPER_PHONEMIZE_ANDROID=${{ github.workspace }}/piper-phonemize/build-android/install-android" >> $GITHUB_ENV
 
     # ------------------------------------------------------------------ #
-    # 9 · Patch Piper CMake for all dependencies and shared library      #
+    # 9 · Patch Piper CMake for extra deps                               #
     # ------------------------------------------------------------------ #
     - name: Patch Piper CMake
       run: |
@@ -215,7 +215,9 @@ jobs:
           -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
           -DBUILD_TESTING=OFF \
           -Dfmt_DIR=${FMT_ANDROID}/lib/cmake/fmt \
+          -DFMT_DIR=${FMT_ANDROID} \
           -Dspdlog_DIR=${SPDLOG_ANDROID}/lib/cmake/spdlog \
+          -DSPDLOG_DIR=${SPDLOG_ANDROID} \
           -DPIPER_PHONEMIZE_DIR=${PIPER_PHONEMIZE_ANDROID} \
           -DCMAKE_PREFIX_PATH="$FMT_ANDROID;$SPDLOG_ANDROID;$PIPER_PHONEMIZE_ANDROID;$ESPEAK_NG_ANDROID;$ORT_ANDROID_DIR" \
           -G Ninja
@@ -223,13 +225,12 @@ jobs:
         cmake --install .
 
     # ------------------------------------------------------------------ #
-    # 12 · Copy eSpeak-NG data to the final install location (CRITICAL)  #
+    # 12 · Copy eSpeak-NG data                                           #
     # ------------------------------------------------------------------ #
     - name: Copy eSpeak-NG data to final artifact location
       run: |
         FINAL_INSTALL_DIR="${{ github.workspace }}/build-android/install-android"
         mkdir -p "${FINAL_INSTALL_DIR}/share"
-        echo "Copying espeak-ng-data from source tree to ${FINAL_INSTALL_DIR}/share/"
         cp -r "${{ github.workspace }}/espeak-ng/espeak-ng-data" "${FINAL_INSTALL_DIR}/share/"
 
     # ------------------------------------------------------------------ #
