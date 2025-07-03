@@ -159,19 +159,18 @@ jobs:
         echo "PIPER_PHONEMIZE_ANDROID=${{ github.workspace }}/piper-phonemize/build-android/install-android" >> $GITHUB_ENV
 
     # ------------------------------------------------------------------ #
-    # 9 · Patch Piper CMake for all dependencies and shared library      #
+    # 9 · Patch Piper CMake for extra deps                               #
     # ------------------------------------------------------------------ #
     - name: Patch Piper CMake
       run: |
         sed -i '/^[[:space:]]*project(/a \
-        find_package(Threads REQUIRED)\
-        find_package(fmt REQUIRED)\
-        find_package(spdlog REQUIRED)' CMakeLists.txt
+        find_package(Threads REQUIRED)\nfind_package(fmt REQUIRED)\nfind_package(spdlog REQUIRED)' CMakeLists.txt
         sed -i -E 's/([[:space:][:punct:]]|^)pthread([[:space:][:punct:]]|$)/ Threads::Threads /g' CMakeLists.txt || true
-        cat <<'EOF' >> CMakeLists.txt
+
+        cat >> CMakeLists.txt <<'CMAKETAIL'
 
 # ----------------------------------------------------------------------
-# Added by GitHub workflow: build shared Piper library for Unity
+# Added by GitHub workflow: shared Piper library for Unity
 # ----------------------------------------------------------------------
 add_library(piperlib SHARED
     src/cpp/piper.cpp
@@ -180,8 +179,8 @@ set_target_properties(piperlib PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # --- eSpeak-NG include & link paths -----------------------------------
 set(ESPEAK_NG_ANDROID_DIR $ENV{ESPEAK_NG_ANDROID})
-target_include_directories(piperlib PRIVATE ${ESPEAK_NG_ANDROID_DIR}/include)
-target_link_directories  (piperlib PRIVATE ${ESPEAK_NG_ANDROID_DIR}/lib)
+target_include_directories(piperlib PRIVATE \${ESPEAK_NG_ANDROID_DIR}/include)
+target_link_directories  (piperlib PRIVATE \${ESPEAK_NG_ANDROID_DIR}/lib)
 target_link_libraries    (piperlib PRIVATE espeak-ng)
 
 # --- other deps --------------------------------------------------------
@@ -193,13 +192,15 @@ target_link_libraries(piperlib PRIVATE
     Threads::Threads
 )
 install(TARGETS piperlib LIBRARY DESTINATION lib)
-EOF
+CMAKETAIL
 
     # ------------------------------------------------------------------ #
     # 10 · Strip newline in VERSION                                      #
     # ------------------------------------------------------------------ #
     - name: Fix VERSION file
-      run: tr -d '\n' < VERSION > VERSION.tmp && mv VERSION.tmp VERSION
+      run: |
+        tr -d '\n' < VERSION > VERSION.tmp
+        mv VERSION.tmp VERSION
 
     # ------------------------------------------------------------------ #
     # 11 · Piper core (exec + shared)                                    #
@@ -229,9 +230,9 @@ EOF
         cmake --install .
 
     # ------------------------------------------------------------------ #
-    # 12 · Copy eSpeak-NG data to the final install location (CRITICAL)  #
+    # 12 · Copy eSpeak-NG data                                           #
     # ------------------------------------------------------------------ #
-    - name: Copy eSpeak-NG data to final artifact location
+    - name: Copy eSpeak-NG data
       run: |
         FINAL_INSTALL_DIR="${{ github.workspace }}/build-android/install-android"
         mkdir -p "${FINAL_INSTALL_DIR}/share"
