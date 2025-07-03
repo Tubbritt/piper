@@ -214,8 +214,13 @@ jobs:
           -DCMAKE_INSTALL_PREFIX=$INSTALL_DIR \
           -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
           -DBUILD_TESTING=OFF \
-          -Dfmt_DIR=${FMT_ANDROID}/lib/cmake/fmt \
-          -Dspdlog_DIR=${SPDLOG_ANDROID}/lib/cmake/spdlog \
+          # Old lowercase cache vars (left here for reference)
+          # -Dfmt_DIR=${FMT_ANDROID}/lib/cmake/fmt \
+          # -Dspdlog_DIR=${SPDLOG_ANDROID}/lib/cmake/spdlog \
+          # Correct variables Piper’s CMake looks for
+          -DFMT_DIR=${FMT_ANDROID} \
+          -DSPDLOG_DIR=${SPDLOG_ANDROID} \
+          -DPIPER_PHONEMIZE_DIR=${PIPER_PHONEMIZE_ANDROID} \
           -DCMAKE_PREFIX_PATH="$PIPER_PHONEMIZE_ANDROID;$ESPEAK_NG_ANDROID;$ORT_ANDROID_DIR" \
           -G Ninja
         ninja
