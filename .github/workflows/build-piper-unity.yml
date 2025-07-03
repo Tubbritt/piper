@@ -2,12 +2,20 @@ name: Build Piper for Unity Android
 
 on:
   workflow_dispatch:
-  push: { branches: [ main, master ] }
+  push:
+    branches: [main, master]
   pull_request:
 
 jobs:
   build-android:
     runs-on: ubuntu-latest
+
+    # ---------- Shared environment ---------- #
+    env:
+      ANDROID_ABI: arm64-v8a
+      ANDROID_PLATFORM: android-21
+      ANDROID_STL: c++_shared
+      ORT_VERSION: 1.17.0
 
     steps:
     # ------------------------------------------------------------------ #
@@ -34,15 +42,23 @@ jobs:
       with:
         ndk-version: r26d
 
-    - name: Export common env
+    - name: Export Android env vars
       run: |
         echo "ANDROID_NDK_HOME=${{ steps.ndk.outputs.ndk-path }}" >> $GITHUB_ENV
-        echo "ANDROID_ABI=arm64-v8a"                             >> $GITHUB_ENV
-        echo "ANDROID_PLATFORM=android-21"                      >> $GITHUB_ENV
-        echo "ANDROID_STL=c++_shared"                           >> $GITHUB_ENV   # ✨ NEW
+        # Add the tool-chain binaries to PATH (handy for any scripts)
+        echo "PATH=${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH" >> $GITHUB_ENV
 
     # ------------------------------------------------------------------ #
-    # 4 · eSpeak-NG (shared)                                             #
+    # 4 · PATCH: drop explicit -lpthread on Android                      #
+    # ------------------------------------------------------------------ #
+    - name: Patch CMakeLists (replace explicit pthread linkage)
+      run: |
+        # Replace any bare “pthread” linkage with portable Threads::Threads
+        # The ‘|| true’ keeps the build going if the search finds nothing.
+        sed -i -E 's/([[:space:][:punct:]]|^)pthread([[:space:][:punct:]]|$)/ Threads::Threads /g' CMakeLists.txt || true
+
+    # ------------------------------------------------------------------ #
+    # 5 · eSpeak-NG (shared)                                             #
     # ------------------------------------------------------------------ #
     - name: Clone eSpeak-NG
       run: git clone https://github.com/espeak-ng/espeak-ng.git
@@ -55,7 +71,7 @@ jobs:
           -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
           -DANDROID_ABI=$ANDROID_ABI \
           -DANDROID_PLATFORM=$ANDROID_PLATFORM \
-          -DANDROID_STL=$ANDROID_STL \             # ✨
+          -DANDROID_STL=$ANDROID_STL \
           -DBUILD_SHARED_LIBS=ON \
           -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
           -DCMAKE_BUILD_TYPE=Release \
@@ -65,11 +81,10 @@ jobs:
         echo "ESPEAK_NG_ANDROID=$PWD/install-android" >> $GITHUB_ENV
 
     # ------------------------------------------------------------------ #
-    # 5 · ONNX Runtime (Android AAR)                                     #
+    # 6 · ONNX Runtime (Android AAR)                                     #
     # ------------------------------------------------------------------ #
     - name: Download ONNX Runtime (Android arm64)
       run: |
-        ORT_VERSION=1.17.0
         mkdir -p third_party && cd third_party
         curl -L -o ort.aar \
           "https://repo1.maven.org/maven2/com/microsoft/onnxruntime/onnxruntime-android/${ORT_VERSION}/onnxruntime-android-${ORT_VERSION}.aar"
@@ -80,7 +95,7 @@ jobs:
         echo "ORT_ANDROID_DIR=$PWD/onnxruntime-android" >> $GITHUB_ENV
 
     # ------------------------------------------------------------------ #
-    # 6 · fmt (static)                                                   #
+    # 7 · fmt (static)                                                   #
     # ------------------------------------------------------------------ #
     - name: Clone fmt
       run: git clone --depth 1 --branch 10.2.1 https://github.com/fmtlib/fmt.git
@@ -93,7 +108,7 @@ jobs:
           -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
           -DANDROID_ABI=$ANDROID_ABI \
           -DANDROID_PLATFORM=$ANDROID_PLATFORM \
-          -DANDROID_STL=$ANDROID_STL \             # ✨
+          -DANDROID_STL=$ANDROID_STL \
           -DBUILD_SHARED_LIBS=OFF \
           -DFMT_TEST=OFF \
           -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
@@ -104,7 +119,7 @@ jobs:
         echo "FMT_ANDROID=$PWD/install-android" >> $GITHUB_ENV
 
     # ------------------------------------------------------------------ #
-    # 7 · spdlog (static, bundled fmt)                                   #
+    # 8 · spdlog (static, bundled fmt)                                   #
     # ------------------------------------------------------------------ #
     - name: Clone spdlog
       run: git clone --depth 1 --branch v1.13.0 https://github.com/gabime/spdlog.git
@@ -117,7 +132,7 @@ jobs:
           -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
           -DANDROID_ABI=$ANDROID_ABI \
           -DANDROID_PLATFORM=$ANDROID_PLATFORM \
-          -DANDROID_STL=$ANDROID_STL \             # ✨
+          -DANDROID_STL=$ANDROID_STL \
           -DBUILD_SHARED_LIBS=OFF \
           -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
           -DCMAKE_BUILD_TYPE=Release \
@@ -127,7 +142,7 @@ jobs:
         echo "SPDLOG_ANDROID=$PWD/install-android" >> $GITHUB_ENV
 
     # ------------------------------------------------------------------ #
-    # 8 · piper-phonemize (shared)                                       #
+    # 9 · piper-phonemize (shared)                                       #
     # ------------------------------------------------------------------ #
     - name: Clone piper-phonemize
       run: git clone https://github.com/rhasspy/piper-phonemize.git
@@ -140,7 +155,7 @@ jobs:
           -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
           -DANDROID_ABI=$ANDROID_ABI \
           -DANDROID_PLATFORM=$ANDROID_PLATFORM \
-          -DANDROID_STL=$ANDROID_STL \             # ✨
+          -DANDROID_STL=$ANDROID_STL \
           -DBUILD_SHARED_LIBS=ON \
           -DESPEAK_NG_DIR=$ESPEAK_NG_ANDROID \
           -DONNXRUNTIME_DIR=$ORT_ANDROID_DIR \
@@ -152,14 +167,14 @@ jobs:
         echo "PIPER_PHONEMIZE_ANDROID=$PWD/install-android" >> $GITHUB_ENV
 
     # ------------------------------------------------------------------ #
-    # 9 · Strip newline in VERSION                                       #
+    # 10 · Strip newline in VERSION                                      #
     # ------------------------------------------------------------------ #
-    - name: Fix VERSION
+    - name: Fix VERSION file
       run: |
         tr -d '\n' < VERSION > VERSION.tmp && mv VERSION.tmp VERSION
 
     # ------------------------------------------------------------------ #
-    # 10 · Piper core (shared)                                           #
+    # 11 · Piper core (shared)                                           #
     # ------------------------------------------------------------------ #
     - name: Build Piper
       run: |
@@ -168,13 +183,16 @@ jobs:
           -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
           -DANDROID_ABI=$ANDROID_ABI \
           -DANDROID_PLATFORM=$ANDROID_PLATFORM \
-          -DANDROID_STL=$ANDROID_STL \             # ✨
+          -DANDROID_STL=$ANDROID_STL \
           -DBUILD_SHARED_LIBS=ON \
           -DCMAKE_BUILD_TYPE=Release \
           -DFMT_DIR=$FMT_ANDROID \
           -DSPDLOG_DIR=$SPDLOG_ANDROID \
           -DPIPER_PHONEMIZE_DIR=$PIPER_PHONEMIZE_ANDROID \
           -DCMAKE_PREFIX_PATH="$FMT_ANDROID;$SPDLOG_ANDROID;$PIPER_PHONEMIZE_ANDROID;$ESPEAK_NG_ANDROID;$ORT_ANDROID_DIR" \
+          -DTHREADS_PREFER_PTHREAD_FLAG=ON \
+          -DCMAKE_THREAD_LIBS_INIT="" \
+          -DCMAKE_HAVE_THREADS_LIBRARY=TRUE \
           -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
           -DBUILD_TESTING=OFF \
           -G Ninja
@@ -182,7 +200,7 @@ jobs:
         cmake --install . --prefix install-android
 
     # ------------------------------------------------------------------ #
-    # 11 · Upload Unity-ready .so files                                   #
+    # 12 · Upload Unity-ready .so files                                   #
     # ------------------------------------------------------------------ #
     - name: Upload Android libraries
       uses: actions/upload-artifact@v4
