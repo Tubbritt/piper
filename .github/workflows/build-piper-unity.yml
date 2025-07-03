@@ -1,5 +1,3 @@
-# A more robust version of your workflow with cleaner paths.
-
 name: Build Piper for Unity Android
 
 on:
@@ -17,22 +15,26 @@ jobs:
       ANDROID_PLATFORM: android-21
       ANDROID_STL: c++_shared
       ORT_VERSION: 1.17.0
-      # Define build and install directories for consistency
-      BUILD_DIR: ${{ github.workspace }}/_build
-      INSTALL_DIR: ${{ github.workspace }}/_install
 
     steps:
-    # 1. Checkout
+    # ------------------------------------------------------------------ #
+    # 1 · Checkout                                                       #
+    # ------------------------------------------------------------------ #
     - name: Checkout source
       uses: actions/checkout@v4
 
-    # 2. Host Tools
+    # ------------------------------------------------------------------ #
+    # 2 · Host-side build tools                                          #
+    # ------------------------------------------------------------------ #
     - name: Install prerequisites
       run: |
         sudo apt-get update
-        sudo apt-get install -y ninja-build autoconf automake libtool pkg-config cmake curl unzip
+        sudo apt-get install -y ninja-build autoconf automake libtool \
+                               pkg-config cmake curl unzip
 
-    # 3. Android NDK
+    # ------------------------------------------------------------------ #
+    # 3 · Android NDK r26d                                               #
+    # ------------------------------------------------------------------ #
     - name: Set up Android NDK
       id: ndk
       uses: nttld/setup-ndk@v1
@@ -40,9 +42,13 @@ jobs:
         ndk-version: r26d
 
     - name: Export Android env vars
-      run: echo "ANDROID_NDK_HOME=${{ steps.ndk.outputs.ndk-path }}" >> $GITHUB_ENV
+      run: |
+        echo "ANDROID_NDK_HOME=${{ steps.ndk.outputs.ndk-path }}" >> $GITHUB_ENV
+        echo "PATH=${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH" >> $GITHUB_ENV
 
-    # 4. Patch CMakeLists
+    # ------------------------------------------------------------------ #
+    # 4 · PATCH: add find_package(Threads) & drop explicit -lpthread     #
+    # ------------------------------------------------------------------ #
     - name: Patch CMakeLists for Android threading
       run: |
         if ! grep -q "find_package(Threads" CMakeLists.txt; then
@@ -50,16 +56,17 @@ jobs:
         fi
         sed -i -E 's/([[:space:][:punct:]]|^)pthread([[:space:][:punct:]]|$)/ Threads::Threads /g' CMakeLists.txt || true
 
-    # 5. eSpeak-NG
+    # ------------------------------------------------------------------ #
+    # 5 · eSpeak-NG (shared)                                             #
+    # ------------------------------------------------------------------ #
     - name: Clone eSpeak-NG
-      uses: actions/checkout@v4
-      with:
-        repository: espeak-ng/espeak-ng
-        path: espeak-ng
+      run: git clone https://github.com/espeak-ng/espeak-ng.git
 
     - name: Build eSpeak-NG
       run: |
-        cmake -S espeak-ng -B ${{ env.BUILD_DIR }}/espeak-ng \
+        cd espeak-ng
+        mkdir build-android && cd build-android
+        cmake .. \
           -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
           -DANDROID_ABI=$ANDROID_ABI \
           -DANDROID_PLATFORM=$ANDROID_PLATFORM \
@@ -67,57 +74,60 @@ jobs:
           -DBUILD_SHARED_LIBS=ON \
           -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
           -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }}/espeak-ng \
           -G Ninja
-        cmake --build ${{ env.BUILD_DIR }}/espeak-ng
-        cmake --install ${{ env.BUILD_DIR }}/espeak-ng
-        echo "ESPEAK_NG_ANDROID=${{ env.INSTALL_DIR }}/espeak-ng" >> $GITHUB_ENV
+        ninja
+        cmake --install . --prefix install-android
+        echo "ESPEAK_NG_ANDROID=$PWD/install-android" >> $GITHUB_ENV
 
-    # 6. ONNX Runtime
+    # ------------------------------------------------------------------ #
+    # 6 · ONNX Runtime (Android AAR)                                     #
+    # ------------------------------------------------------------------ #
     - name: Download ONNX Runtime (Android arm64)
       run: |
-        mkdir -p ${{ env.INSTALL_DIR }}/onnxruntime-android/lib
-        curl -L -o ort.aar "https://repo1.maven.org/maven2/com/microsoft/onnxruntime/onnxruntime-android/${ORT_VERSION}/onnxruntime-android-${ORT_VERSION}.aar"
+        mkdir -p third_party && cd third_party
+        curl -L -o ort.aar \
+          "https://repo1.maven.org/maven2/com/microsoft/onnxruntime/onnxruntime-android/${ORT_VERSION}/onnxruntime-android-${ORT_VERSION}.aar"
         unzip -q ort.aar -d ort
-        cp -r ort/headers/*  ${{ env.INSTALL_DIR }}/onnxruntime-android/include/
-        cp    ort/jni/arm64-v8a/libonnxruntime.so ${{ env.INSTALL_DIR }}/onnxruntime-android/lib/
-        echo "ORT_ANDROID_DIR=${{ env.INSTALL_DIR }}/onnxruntime-android" >> $GITHUB_ENV
+        mkdir -p onnxruntime-android/include onnxruntime-android/lib
+        cp -r ort/headers/*  onnxruntime-android/include/
+        cp    ort/jni/arm64-v8a/libonnxruntime.so onnxruntime-android/lib/
+        echo "ORT_ANDROID_DIR=$PWD/onnxruntime-android" >> $GITHUB_ENV
 
-    # 7. fmt
+    # ------------------------------------------------------------------ #
+    # 7 · fmt (static)                                                   #
+    # ------------------------------------------------------------------ #
     - name: Clone fmt
-      uses: actions/checkout@v4
-      with:
-        repository: fmtlib/fmt
-        path: fmt
-        ref: 10.2.1
+      run: git clone --depth 1 --branch 10.2.1 https://github.com/fmtlib/fmt.git
 
     - name: Build fmt
       run: |
-        cmake -S fmt -B ${{ env.BUILD_DIR }}/fmt \
+        cd fmt
+        mkdir build-android && cd build-android
+        cmake .. \
           -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
           -DANDROID_ABI=$ANDROID_ABI \
           -DANDROID_PLATFORM=$ANDROID_PLATFORM \
           -DANDROID_STL=$ANDROID_STL \
-          -DBUILD_SHARED_LIBS=OFF -DFMT_TEST=OFF \
+          -DBUILD_SHARED_LIBS=OFF \
+          -DFMT_TEST=OFF \
           -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
           -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }}/fmt \
           -G Ninja
-        cmake --build ${{ env.BUILD_DIR }}/fmt
-        cmake --install ${{ env.BUILD_DIR }}/fmt
-        echo "FMT_ANDROID=${{ env.INSTALL_DIR }}/fmt" >> $GITHUB_ENV
+        ninja
+        cmake --install . --prefix install-android
+        echo "FMT_ANDROID=$PWD/install-android" >> $GITHUB_ENV
 
-    # 8. spdlog
+    # ------------------------------------------------------------------ #
+    # 8 · spdlog (static)                                                #
+    # ------------------------------------------------------------------ #
     - name: Clone spdlog
-      uses: actions/checkout@v4
-      with:
-        repository: gabime/spdlog
-        path: spdlog
-        ref: v1.13.0
+      run: git clone --depth 1 --branch v1.13.0 https://github.com/gabime/spdlog.git
 
     - name: Build spdlog
       run: |
-        cmake -S spdlog -B ${{ env.BUILD_DIR }}/spdlog \
+        cd spdlog
+        mkdir build-android && cd build-android
+        cmake .. \
           -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
           -DANDROID_ABI=$ANDROID_ABI \
           -DANDROID_PLATFORM=$ANDROID_PLATFORM \
@@ -125,73 +135,97 @@ jobs:
           -DBUILD_SHARED_LIBS=OFF \
           -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
           -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }}/spdlog \
           -G Ninja
-        cmake --build ${{ env.BUILD_DIR }}/spdlog
-        cmake --install ${{ env.BUILD_DIR }}/spdlog
-        echo "SPDLOG_ANDROID=${{ env.INSTALL_DIR }}/spdlog" >> $GITHUB_ENV
+        ninja
+        cmake --install . --prefix install-android
+        echo "SPDLOG_ANDROID=$PWD/install-android" >> $GITHUB_ENV
 
-    # 9. piper-phonemize
+    # ------------------------------------------------------------------ #
+    # 9 · piper-phonemize (shared)                                       #
+    # ------------------------------------------------------------------ #
     - name: Clone piper-phonemize
-      uses: actions/checkout@v4
-      with:
-        repository: rhasspy/piper-phonemize
-        path: piper-phonemize
+      run: git clone https://github.com/rhasspy/piper-phonemize.git
 
     - name: Build piper-phonemize
       run: |
-        cmake -S piper-phonemize -B ${{ env.BUILD_DIR }}/piper-phonemize \
+        cd piper-phonemize
+        mkdir build-android && cd build-android
+        cmake .. \
           -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
           -DANDROID_ABI=$ANDROID_ABI \
           -DANDROID_PLATFORM=$ANDROID_PLATFORM \
           -DANDROID_STL=$ANDROID_STL \
           -DBUILD_SHARED_LIBS=ON \
+          -DESPEAK_NG_DIR=$ESPEAK_NG_ANDROID \
+          -DONNXRUNTIME_DIR=$ORT_ANDROID_DIR \
           -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }}/piper-phonemize \
-          -Despeak-ng_DIR=${{ env.ESPEAK_NG_ANDROID }}/lib/cmake/espeak-ng \
-          -Donnxruntime_DIR=${{ env.ORT_ANDROID_DIR }} \
+          -DCMAKE_INSTALL_PREFIX=install-android \
           -G Ninja
-        cmake --build ${{ env.BUILD_DIR }}/piper-phonemize
-        cmake --install ${{ env.BUILD_DIR }}/piper-phonemize
-        echo "PIPER_PHONEMIZE_ANDROID=${{ env.INSTALL_DIR }}/piper-phonemize" >> $GITHUB_ENV
+        ninja
+        cmake --install .
+        echo "PIPER_PHONEMIZE_ANDROID=$PWD/install-android" >> $GITHUB_ENV
 
-    # 10. Copy eSpeak-NG data
+    # ------------------------------------------------------------------ #
+    # 10 · Copy eSpeak-NG data (needed for Piper install)                #
+    # ------------------------------------------------------------------ #
     - name: Copy eSpeak-NG data
       run: |
-        mkdir -p ${{ env.INSTALL_DIR }}/piper/share
-        cp -r ${{ env.ESPEAK_NG_ANDROID }}/share/espeak-ng-data ${{ env.INSTALL_DIR }}/piper/share/
+        # Where Piper expects it:
+        DEST_DIR="$PIPER_PHONEMIZE_ANDROID/share"
+        mkdir -p "$DEST_DIR"
 
-    # 11. Strip newline in VERSION
+        # Prefer the data from an installed prefix (if it exists) …
+        if [ -d "$ESPEAK_NG_ANDROID/share/espeak-ng-data" ]; then
+          echo "Using installed espeak-ng-data"
+          cp -r "$ESPEAK_NG_ANDROID/share/espeak-ng-data" "$DEST_DIR/"
+        # … otherwise fall back to the raw source tree data.
+        else
+          echo "Using source-tree espeak-ng-data (cross-compile case)"
+          cp -r espeak-ng/espeak-ng-data "$DEST_DIR/"
+        fi
+
+    # ------------------------------------------------------------------ #
+    # 11 · Strip newline in VERSION                                      #
+    # ------------------------------------------------------------------ #
     - name: Fix VERSION file
-      run: tr -d '\n' < VERSION > VERSION.tmp && mv VERSION.tmp VERSION
+      run: |
+        tr -d '\n' < VERSION > VERSION.tmp && mv VERSION.tmp VERSION
 
-    # 12. Piper core (The Fix!)
+    # ------------------------------------------------------------------ #
+    # 12 · Piper core (shared)                                           #
+    # ------------------------------------------------------------------ #
     - name: Build Piper
       run: |
-        cmake -S . -B ${{ env.BUILD_DIR }}/piper \
+        mkdir build-android && cd build-android
+        INSTALL_DIR=$PWD/install-android
+        cmake .. \
           -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
           -DANDROID_ABI=$ANDROID_ABI \
           -DANDROID_PLATFORM=$ANDROID_PLATFORM \
           -DANDROID_STL=$ANDROID_STL \
           -DBUILD_SHARED_LIBS=ON \
           -DCMAKE_BUILD_TYPE=Release \
+          -DFMT_DIR=$FMT_ANDROID \
+          -DSPDLOG_DIR=$SPDLOG_ANDROID \
+          -DPIPER_PHONEMIZE_DIR=$PIPER_PHONEMIZE_ANDROID \
+          -DCMAKE_PREFIX_PATH="$FMT_ANDROID;$SPDLOG_ANDROID;$PIPER_PHONEMIZE_ANDROID;$ESPEAK_NG_ANDROID;$ORT_ANDROID_DIR" \
+          -DCMAKE_INSTALL_PREFIX=$INSTALL_DIR \
           -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-          -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }}/piper \
-          -DCMAKE_PREFIX_PATH="${{ env.FMT_ANDROID }};${{ env.SPDLOG_ANDROID }};${{ env.PIPER_PHONEMIZE_ANDROID }};${{ env.ESPEAK_NG_ANDROID }};${{ env.ORT_ANDROID_DIR }}" \
           -DBUILD_TESTING=OFF \
           -DPIPER_BUILD_EXE=OFF \
           -G Ninja
-        cmake --build ${{ env.BUILD_DIR }}/piper
-        cmake --install ${{ env.BUILD_DIR }}/piper
+        ninja
+        cmake --install .
 
-    # 13. Upload artifacts with clean paths
+    # ------------------------------------------------------------------ #
+    # 13 · Upload Unity-ready outputs                                    #
+    # ------------------------------------------------------------------ #
     - name: Upload Android libraries
       uses: actions/upload-artifact@v4
       with:
-        name: piper-android-libs-${{ env.ANDROID_ABI }}
+        name: piper-android-libs
         path: |
-          ${{ env.INSTALL_DIR }}/piper/lib/libpiper.so
-          ${{ env.INSTALL_DIR }}/piper-phonemize/lib/libpiper_phonemize.so
-          ${{ env.INSTALL_DIR }}/espeak-ng/lib/libespeak-ng.so
-          ${{ env.INSTALL_DIR }}/piper/share/espeak-ng-data
+          build-android/install-android/lib/libpiper.so
+          piper-phonemize/build-android/install-android/lib/libpiper_phonemize.so
+          espeak-ng/build-android/install-android/lib/libespeak-ng.so
+          build-android/install-android/share/espeak-ng-data/**
