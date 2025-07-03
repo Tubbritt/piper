@@ -80,7 +80,7 @@ jobs:
         echo "ESPEAK_NG_ANDROID=${{ github.workspace }}/espeak-ng/build-android/install-android" >> $GITHUB_ENV
 
     # ------------------------------------------------------------------ #
-    # 6 · ONNX Runtime (Reverted to original, correct logic)             #
+    # 6 · ONNX Runtime (using original correct logic)                    #
     # ------------------------------------------------------------------ #
     - name: Download and prepare ONNX Runtime
       run: |
@@ -88,13 +88,7 @@ jobs:
         curl -L -o ort.aar \
           "https://repo1.maven.org/maven2/com/microsoft/onnxruntime/onnxruntime-android/${ORT_VERSION}/onnxruntime-android-${ORT_VERSION}.aar"
         unzip -q ort.aar -d ort
-        
-        echo "--- Listing contents of unzipped ONNX AAR ---"
-        ls -R ort
-        echo "---------------------------------------------"
-
         mkdir -p onnxruntime-android/include onnxruntime-android/lib
-        # This is the original, correct logic. The AAR has a top-level 'headers' dir.
         cp -r ort/headers/* onnxruntime-android/include/
         cp    ort/jni/${ANDROID_ABI}/libonnxruntime.so onnxruntime-android/lib/
         echo "ORT_ANDROID_DIR=${{ github.workspace }}/third_party/onnxruntime-android" >> $GITHUB_ENV
@@ -224,6 +218,7 @@ jobs:
           -DCMAKE_INSTALL_PREFIX=$INSTALL_DIR \
           -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
           -DBUILD_TESTING=OFF \
+          -DPIPER_BUILD_DEPS=OFF \
           -DCMAKE_PREFIX_PATH="$FMT_ANDROID;$SPDLOG_ANDROID;$PIPER_PHONEMIZE_ANDROID;$ESPEAK_NG_ANDROID;$ORT_ANDROID_DIR" \
           -G Ninja
         ninja
