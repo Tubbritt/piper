@@ -11,7 +11,9 @@ jobs:
     runs-on: windows-latest
     defaults:
       run:
-        shell: bash
+        # Use PowerShell so that MSVC and nuget are on PATH
+        shell: pwsh
+
     env:
       ORT_VERSION: 1.17.0
 
@@ -20,101 +22,104 @@ jobs:
     - name: Checkout source
       uses: actions/checkout@v4
 
-    # 2 · Install Ninja (CMake is preinstalled on windows-latest)
+    # 2 · Install Ninja (optional—VS can build without it)
     - name: Install Ninja
       run: choco install ninja -y
 
     # 3 · eSpeak-NG (shared DLL)
-    - name: Clone eSpeak-NG
-      run: git clone https://github.com/espeak-ng/espeak-ng.git
-
-    - name: Build eSpeak-NG
+    - name: Clone & Build eSpeak-NG
       run: |
-        cd espeak-ng
-        mkdir -p build-windows && cd build-windows
-        cmake .. \
-          -G Ninja \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DBUILD_SHARED_LIBS=ON \
+        git clone https://github.com/espeak-ng/espeak-ng.git
+        Push-Location espeak-ng
+        mkdir build-windows; cd build-windows
+        cmake .. `
+          -G "Visual Studio 17 2022" `
+          -A x64 `
+          -DCMAKE_BUILD_TYPE=Release `
+          -DBUILD_SHARED_LIBS=ON `
           -DCMAKE_INSTALL_PREFIX=$PWD/install-windows
-        ninja
-        ninja install
-        echo "ESPEAK_NG_WINDOWS=$PWD/install-windows" >> $GITHUB_ENV
+        cmake --build . --config Release --target INSTALL
+        Pop-Location
+        echo "ESPEAK_NG_WINDOWS=$PWD/espeak-ng/build-windows/install-windows" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8
 
     # 4 · ONNX Runtime (Windows x64)
     - name: Download ONNX Runtime (Windows x64)
       run: |
-        mkdir -p third_party && cd third_party
-        curl -L -o ort.zip \
-          "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-win-x64-${ORT_VERSION}.zip"
-        unzip -q ort.zip -d ort
-        echo "ORT_WINDOWS_DIR=$PWD/ort" >> $GITHUB_ENV
+        New-Item -ItemType Directory third_party | Out-Null
+        Push-Location third_party
+        Invoke-WebRequest -Uri "https://github.com/microsoft/onnxruntime/releases/download/v$Env:ORT_VERSION/onnxruntime-win-x64-$Env:ORT_VERSION.zip" -OutFile ort.zip
+        Expand-Archive ort.zip -DestinationPath ort
+        Pop-Location
+        echo "ORT_WINDOWS_DIR=$PWD/third_party/ort" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8
 
     # 5 · fmt (static)
-    - name: Clone fmt
-      run: git clone --depth 1 --branch 10.2.1 https://github.com/fmtlib/fmt.git
-
-    - name: Build fmt
+    - name: Clone & Build fmt
       run: |
-        cd fmt
-        mkdir -p build-windows && cd build-windows
-        cmake .. \
-          -G Ninja \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DBUILD_SHARED_LIBS=OFF \
+        git clone --depth 1 --branch 10.2.1 https://github.com/fmtlib/fmt.git
+        Push-Location fmt
+        mkdir build-windows; cd build-windows
+        cmake .. `
+          -G "Visual Studio 17 2022" `
+          -A x64 `
+          -DCMAKE_BUILD_TYPE=Release `
+          -DBUILD_SHARED_LIBS=OFF `
           -DCMAKE_INSTALL_PREFIX=$PWD/install-windows
-        ninja
-        ninja install
-        echo "FMT_WINDOWS=$PWD/install-windows" >> $GITHUB_ENV
+        cmake --build . --config Release --target INSTALL
+        Pop-Location
+        echo "FMT_WINDOWS=$PWD/fmt/build-windows/install-windows" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8
 
     # 6 · spdlog (static)
-    - name: Clone spdlog
-      run: git clone --depth 1 --branch v1.13.0 https://github.com/gabime/spdlog.git
-
-    - name: Build spdlog
+    - name: Clone & Build spdlog
       run: |
-        cd spdlog
-        mkdir -p build-windows && cd build-windows
-        cmake .. \
-          -G Ninja \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DBUILD_SHARED_LIBS=OFF \
+        git clone --depth 1 --branch v1.13.0 https://github.com/gabime/spdlog.git
+        Push-Location spdlog
+        mkdir build-windows; cd build-windows
+        cmake .. `
+          -G "Visual Studio 17 2022" `
+          -A x64 `
+          -DCMAKE_BUILD_TYPE=Release `
+          -DBUILD_SHARED_LIBS=OFF `
           -DCMAKE_INSTALL_PREFIX=$PWD/install-windows
-        ninja
-        ninja install
-        echo "SPDLOG_WINDOWS=$PWD/install-windows" >> $GITHUB_ENV
+        cmake --build . --config Release --target INSTALL
+        Pop-Location
+        echo "SPDLOG_WINDOWS=$PWD/spdlog/build-windows/install-windows" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8
 
     # 7 · piper-phonemize (shared DLL)
-    - name: Clone piper-phonemize
-      run: git clone https://github.com/rhasspy/piper-phonemize.git
-
-    - name: Build piper-phonemize
+    - name: Clone & Build piper-phonemize
       run: |
-        cd piper-phonemize
-        mkdir -p build-windows && cd build-windows
-        cmake .. \
-          -G Ninja \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DBUILD_SHARED_LIBS=ON \
-          -DESPEAK_NG_DIR=$ESPEAK_NG_WINDOWS \
-          -Donnxruntime_DIR=$ORT_WINDOWS_DIR \
+        git clone https://github.com/rhasspy/piper-phonemize.git
+        Push-Location piper-phonemize
+        mkdir build-windows; cd build-windows
+        cmake .. `
+          -G "Visual Studio 17 2022" `
+          -A x64 `
+          -DCMAKE_BUILD_TYPE=Release `
+          -DBUILD_SHARED_LIBS=ON `
+          -DESPEAK_NG_DIR="$Env:ESPEAK_NG_WINDOWS" `
+          -Donnxruntime_DIR="$Env:ORT_WINDOWS_DIR" `
           -DCMAKE_INSTALL_PREFIX=$PWD/install-windows
-        ninja
-        ninja install
-        echo "PIPER_PHONEMIZE_WINDOWS=$PWD/install-windows" >> $GITHUB_ENV
+        cmake --build . --config Release --target INSTALL
+        Pop-Location
+        echo "PIPER_PHONEMIZE_WINDOWS=$PWD/piper-phonemize/build-windows/install-windows" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8
 
     # 8 · Piper core (shared DLL)
-    - name: Build Piper
+    - name: Build Piper core
       run: |
-        mkdir -p build-windows && cd build-windows
-        cmake .. \
-          -G Ninja \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DBUILD_SHARED_LIBS=ON \
-          -DCMAKE_PREFIX_PATH="${FMT_WINDOWS};${SPDLOG_WINDOWS};${ESPEAK_NG_WINDOWS};${ORT_WINDOWS_DIR};${PIPER_PHONEMIZE_WINDOWS}" \
+        mkdir build-windows
+        Push-Location build-windows
+        cmake .. `
+          -G "Visual Studio 17 2022" `
+          -A x64 `
+          -DCMAKE_BUILD_TYPE=Release `
+          -DBUILD_SHARED_LIBS=ON `
+          -DFMT_DIR="$Env:FMT_WINDOWS" `
+          -DSPDLOG_DIR="$Env:SPDLOG_WINDOWS" `
+          -DESPEAK_NG_DIR="$Env:ESPEAK_NG_WINDOWS" `
+          -Donnxruntime_DIR="$Env:ORT_WINDOWS_DIR" `
+          -DPIPER_PHONEMIZE_DIR="$Env:PIPER_PHONEMIZE_WINDOWS" `
           -DCMAKE_INSTALL_PREFIX=$PWD/install-windows
-        ninja
-        ninja install
+        cmake --build . --config Release --target INSTALL
+        Pop-Location
 
     # 9 · Upload the four DLLs as an artifact
     - name: Upload Windows libraries
@@ -122,7 +127,7 @@ jobs:
       with:
         name: piper-windows-libs
         path: |
-          espeak-ng/build-windows/install-windows/lib/espeak-ng.dll
-          piper-phonemize/build-windows/install-windows/lib/piper_phonemize.dll
-          build-windows/install-windows/lib/piper.dll
+          espeak-ng/build-windows/install-windows/bin/espeak-ng.dll
+          piper-phonemize/build-windows/install-windows/bin/piper_phonemize.dll
+          build-windows/install-windows/bin/piper.dll
           third_party/ort/bin/onnxruntime.dll
