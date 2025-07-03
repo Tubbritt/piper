@@ -34,7 +34,7 @@ jobs:
       with:
         ndk-version: r26d
 
-    # Convenience shell variable reused in many steps
+    # convenience variables reused below
     - name: Export common env
       run: |
         echo "ANDROID_NDK_HOME=${{ steps.ndk.outputs.ndk-path }}" >> $GITHUB_ENV
@@ -64,7 +64,7 @@ jobs:
         echo "ESPEAK_NG_ANDROID=$PWD/install-android" >> $GITHUB_ENV
 
     # ------------------------------------------------------------------ #
-    # 5 · ONNX Runtime (from the official AAR)                           #
+    # 5 · ONNX Runtime (Android AAR)                                     #
     # ------------------------------------------------------------------ #
     - name: Download ONNX Runtime (Android arm64)
       run: |
@@ -92,8 +92,8 @@ jobs:
           -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
           -DANDROID_ABI=$ANDROID_ABI \
           -DANDROID_PLATFORM=$ANDROID_PLATFORM \
-          -DBUILD_SHARED_LIBS=OFF  \
-          -DFMT_TEST=OFF           \
+          -DBUILD_SHARED_LIBS=OFF \
+          -DFMT_TEST=OFF \
           -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
           -DCMAKE_BUILD_TYPE=Release \
           -G Ninja
@@ -117,8 +117,8 @@ jobs:
           -DANDROID_PLATFORM=$ANDROID_PLATFORM \
           -DSPDLOG_FMT_EXTERNAL=ON \
           -DCMAKE_PREFIX_PATH=$FMT_ANDROID \
-	  -Dfmt_DIR=$FMT_ANDROID/lib/cmake/fmt \           \
-          -DBUILD_SHARED_LIBS=OFF           \
+          -Dfmt_DIR=$FMT_ANDROID/lib/cmake/fmt \
+          -DBUILD_SHARED_LIBS=OFF \
           -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
           -DCMAKE_BUILD_TYPE=Release \
           -G Ninja
@@ -154,9 +154,9 @@ jobs:
     # ------------------------------------------------------------------ #
     # 9 · Trim VERSION (newline → nothing)                               #
     # ------------------------------------------------------------------ #
-    - name: Fix VERSION file
+    - name: Fix VERSION newline
       run: |
-        tr -d '\n' < VERSION > VERSION.fixed && mv VERSION.fixed VERSION
+        tr -d '\n' < VERSION > VERSION.tmp && mv VERSION.tmp VERSION
 
     # ------------------------------------------------------------------ #
     # 10 · Piper core (shared)                                           #
@@ -184,7 +184,7 @@ jobs:
         cmake --install . --prefix install-android
 
     # ------------------------------------------------------------------ #
-    # 11 · Upload the three Unity-ready .so files                         #
+    # 11 · Upload Unity-ready .so files                                  #
     # ------------------------------------------------------------------ #
     - name: Upload Android libraries
       uses: actions/upload-artifact@v4
