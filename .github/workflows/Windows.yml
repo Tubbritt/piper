@@ -17,7 +17,7 @@ jobs:
       ORT_VERSION: 1.17.0
 
     steps:
-    # 1 · Checkout your patched Piper fork
+    # 1 · Checkout
     - name: Checkout source
       uses: actions/checkout@v4
 
@@ -34,12 +34,11 @@ jobs:
         cmake .. `
           -G "Visual Studio 17 2022" `
           -A x64 `
-          -DCMAKE_BUILD_TYPE=Release `
           -DBUILD_SHARED_LIBS=ON `
           -DCMAKE_INSTALL_PREFIX=$PWD/install-windows
         cmake --build . --config Release --target INSTALL
         Pop-Location
-        # Export the install prefix
+        # Export prefix
         "ESPEAK_NG_WINDOWS=$PWD/espeak-ng/build-windows/install-windows" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8
 
     # 4 · ONNX Runtime (Windows x64)
@@ -61,7 +60,6 @@ jobs:
         cmake .. `
           -G "Visual Studio 17 2022" `
           -A x64 `
-          -DCMAKE_BUILD_TYPE=Release `
           -DBUILD_SHARED_LIBS=OFF `
           -DCMAKE_INSTALL_PREFIX=$PWD/install-windows
         cmake --build . --config Release --target INSTALL
@@ -77,7 +75,6 @@ jobs:
         cmake .. `
           -G "Visual Studio 17 2022" `
           -A x64 `
-          -DCMAKE_BUILD_TYPE=Release `
           -DBUILD_SHARED_LIBS=OFF `
           -DCMAKE_INSTALL_PREFIX=$PWD/install-windows
         cmake --build . --config Release --target INSTALL
@@ -90,18 +87,23 @@ jobs:
         git clone https://github.com/rhasspy/piper-phonemize.git
         Push-Location piper-phonemize
         mkdir build-windows; cd build-windows
+
+        # Export CMake search paths so espeak-ng & onnxruntime headers/libs are found
+        $env:CMAKE_PREFIX_PATH = "$Env:ESPEAK_NG_WINDOWS;$Env:ORT_WINDOWS_DIR"
+        $env:CMAKE_INCLUDE_PATH = "$Env:ESPEAK_NG_WINDOWS/include;$Env:ORT_WINDOWS_DIR/include"
+        $env:CMAKE_LIBRARY_PATH = "$Env:ESPEAK_NG_WINDOWS/lib;$Env:ORT_WINDOWS_DIR/lib"
+
         cmake .. `
           -G "Visual Studio 17 2022" `
           -A x64 `
-          -DCMAKE_BUILD_TYPE=Release `
           -DBUILD_SHARED_LIBS=ON `
           -DESPEAK_NG_DIR="$Env:ESPEAK_NG_WINDOWS" `
           -DONNXRUNTIME_DIR="$Env:ORT_WINDOWS_DIR" `
-          -DCMAKE_PREFIX_PATH="$Env:ESPEAK_NG_WINDOWS;$Env:ORT_WINDOWS_DIR" `
           -DCMAKE_INSTALL_PREFIX=$PWD/install-windows
         cmake --build . --config Release --target INSTALL
-        # Now that we're in build-windows, export the install prefix:
-        "PIPER_PHONEMIZE_WINDOWS=$($PWD.Path)\install-windows" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8
+
+        # Export prefix after install
+        "PIPER_PHONEMIZE_WINDOWS=$PWD/install-windows" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8
         Pop-Location
 
     # 8 · Piper core (shared DLL)
@@ -109,21 +111,21 @@ jobs:
       run: |
         mkdir build-windows
         Push-Location build-windows
+
+        # Inherit same search paths for core
+        $env:CMAKE_PREFIX_PATH = "$Env:FMT_WINDOWS;$Env:SPDLOG_WINDOWS;$Env:ESPEAK_NG_WINDOWS;$Env:ORT_WINDOWS_DIR;$Env:PIPER_PHONEMIZE_WINDOWS"
+        $env:CMAKE_INCLUDE_PATH = "$Env:FMT_WINDOWS/include;$Env:SPDLOG_WINDOWS/include;$Env:ESPEAK_NG_WINDOWS/include;$Env:ORT_WINDOWS_DIR/include;$Env:PIPER_PHONEMIZE_WINDOWS/include"
+        $env:CMAKE_LIBRARY_PATH = "$Env:FMT_WINDOWS/lib;$Env:SPDLOG_WINDOWS/lib;$Env:ESPEAK_NG_WINDOWS/lib;$Env:ORT_WINDOWS_DIR/lib;$Env:PIPER_PHONEMIZE_WINDOWS/lib"
+
         cmake .. `
           -G "Visual Studio 17 2022" `
           -A x64 `
-          -DCMAKE_BUILD_TYPE=Release `
           -DBUILD_SHARED_LIBS=ON `
-          -DFMT_DIR="$Env:FMT_WINDOWS" `
-          -DSPDLOG_DIR="$Env:SPDLOG_WINDOWS" `
-          -DESPEAK_NG_DIR="$Env:ESPEAK_NG_WINDOWS" `
-          -DONNXRUNTIME_DIR="$Env:ORT_WINDOWS_DIR" `
-          -DPIPER_PHONEMIZE_DIR="$Env:PIPER_PHONEMIZE_WINDOWS" `
           -DCMAKE_INSTALL_PREFIX=$PWD/install-windows
         cmake --build . --config Release --target INSTALL
         Pop-Location
 
-    # 9 · Upload the four DLLs as an artifact
+    # 9 · Upload the four DLLs
     - name: Upload Windows libraries
       uses: actions/upload-artifact@v4
       with:
